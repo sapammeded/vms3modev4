@@ -87,6 +87,28 @@
         .monetization-badge.demo { background: #fef3c7; color: #92400e; }
         .monetization-badge.basic { background: #dbeafe; color: #1e40af; }
         .monetization-badge.pro { background: #d1fae5; color: #065f46; }
+        
+        /* vmsSite Modal Styles */
+        .vms-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10001;
+        }
+        .vms-modal-card {
+            background: white; border-radius: 28px; padding: 28px;
+            width: 420px; max-width: 90%;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+        }
+        .vms-modal-card h3 { margin-bottom: 20px; color: #1f4e4a; display: flex; align-items: center; gap: 8px; }
+        .vms-input-group { margin-bottom: 16px; }
+        .vms-input-group label { display: block; font-size: 0.7rem; font-weight: 600; color: #2b5a55; margin-bottom: 5px; text-transform: uppercase; }
+        .vms-input-group input, .vms-input-group select { width: 100%; padding: 12px; border-radius: 16px; border: 1px solid #d4e0e5; }
+        .vms-input-group input:disabled { background: #f3f4f6; color: #9ca3af; cursor: not-allowed; }
+        .vms-modal-buttons { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+        .vms-upgrade-hint { background: #fef3c7; padding: 12px; border-radius: 16px; margin-top: 16px; font-size: 0.75rem; color: #92400e; display: flex; align-items: center; gap: 8px; }
+        .vms-upgrade-hint button { background: #f59e0b; padding: 6px 12px; font-size: 0.7rem; margin-left: auto; }
+        .vms-badge-locked { background: #fee2e2; color: #b91c1c; padding: 2px 8px; border-radius: 20px; font-size: 0.6rem; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -110,12 +132,12 @@
 
 <div class="mobile-header">
     <button class="menu-toggle" id="mobileMenuBtn">☰</button>
-    <strong style="font-size: 1.2rem;" id="brandMobile">VMS SAPAM MEDED</strong>
+    <strong style="font-size: 1.2rem;" id="brandMobile" data-site="SITE_A">VMS SAPAM MEDED</strong>
     <div style="width: 28px;"></div>
 </div>
 <div class="overlay" id="overlay"></div>
 <div class="mobile-sidebar" id="mobileSidebar">
-    <div class="logo-area"><h1 id="brandSidebar">VMS</h1><p>Access Control</p></div>
+    <div class="logo-area"><h1 id="brandSidebar" data-site="SITE_A">VMS</h1><p>Access Control</p></div>
     <div class="nav-item mobile-nav" data-tab="dashboard">📊 Dashboard</div>
     <div class="nav-item mobile-nav" data-tab="register">📝 Register</div>
     <div class="nav-item mobile-nav" data-tab="scanner">📷 Scanner</div>
@@ -124,7 +146,7 @@
 
 <div class="app-layout" id="appLayout" style="display: none;">
     <div class="sidebar">
-        <div class="logo-area"><h1 id="brandSidebarMain">VMS</h1><p>Enterprise Access</p></div>
+        <div class="logo-area"><h1 id="brandSidebarMain" data-site="SITE_A">VMS</h1><p>Enterprise Access</p></div>
         <div class="nav-item active" data-tab="dashboard">📊 Dashboard</div>
         <div class="nav-item" data-tab="register">📝 Register Visitor</div>
         <div class="nav-item" data-tab="scanner">📷 Security Scan</div>
@@ -133,9 +155,9 @@
             <div class="site-selector-wrap" style="background: transparent; border: none; color: white; padding: 0;">
                 <label style="color:white;">🌍 Site</label>
                 <select id="siteSelector" style="background:#2b5a55; color:white; border-color:#4a7a76;">
-                    <option value="SITE_A">🏭 SITE A</option>
-                    <option value="SITE_B">🏢 SITE B</option>
-                    <option value="SITE_C">🏬 SITE C</option>
+                    <option value="SITE_A" data-site-label="SITE_A">🏭 SITE A</option>
+                    <option value="SITE_B" data-site-label="SITE_B">🏢 SITE B</option>
+                    <option value="SITE_C" data-site-label="SITE_C">🏬 SITE C</option>
                 </select>
                 <div id="userInfoSidebar" class="user-badge" style="background:#2b5a55; color:white;"></div>
                 <button id="logoutBtnSidebar" class="btn-outline" style="margin-top:12px; background:#b91c1c; color:white; border:none;">Logout</button>
@@ -148,12 +170,14 @@
             <div class="site-selector-wrap" style="background: white;">
                 <label>🌐 Active Site</label>
                 <select id="siteSelectorTop">
-                    <option value="SITE_A">🏭 SITE A</option>
-                    <option value="SITE_B">🏢 SITE B</option>
-                    <option value="SITE_C">🏬 SITE C</option>
+                    <option value="SITE_A" data-site-label="SITE_A">🏭 SITE A</option>
+                    <option value="SITE_B" data-site-label="SITE_B">🏢 SITE B</option>
+                    <option value="SITE_C" data-site-label="SITE_C">🏬 SITE C</option>
                 </select>
                 <div id="userInfoTop" class="user-badge"></div>
                 <button id="logoutBtnTop" class="btn-outline" style="background:#b91c1c; color:white;">Logout</button>
+                <!-- vmsSite Edit Button - Monetization Aware -->
+                <button id="vmsSiteEditBtn" onclick="vmsSite_open()" style="background:#0f2c2c; margin-left:8px;">⚙️ Rename Site</button>
             </div>
         </div>
 
@@ -239,7 +263,582 @@
     </div>
 </div>
 
+<!-- vmsSite Modal - Monetization Aware UI -->
+<div id="vmsSiteModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px); align-items:center; justify-content:center; z-index:10001;">
+    <div style="background:white; border-radius:28px; padding:28px; width:420px; max-width:90%;">
+        <h3 style="margin-bottom:20px; color:#1f4e4a; display:flex; align-items:center; gap:8px;">
+            ⚙️ Edit Site Names
+            <span id="vmsPackageBadge" style="font-size:0.6rem; background:#e2e8f0; padding:2px 8px; border-radius:20px;">DEMO</span>
+        </h3>
+        <div class="vms-input-group">
+            <label>🏭 SITE A <span id="vmsLockA" class="vms-badge-locked" style="display:none;">🔒</span></label>
+            <input type="text" id="vmsA" placeholder="SITE A" data-site-key="SITE_A">
+        </div>
+        <div class="vms-input-group">
+            <label>🏢 SITE B <span id="vmsLockB" class="vms-badge-locked" style="display:none;">🔒</span></label>
+            <input type="text" id="vmsB" placeholder="SITE B" data-site-key="SITE_B">
+        </div>
+        <div class="vms-input-group">
+            <label>🏬 SITE C <span id="vmsLockC" class="vms-badge-locked" style="display:none;">🔒</span></label>
+            <input type="text" id="vmsC" placeholder="SITE C" data-site-key="SITE_C">
+        </div>
+        <div id="vmsDynamicSites"></div>
+        <div class="vms-modal-buttons">
+            <button id="vmsSaveBtn" style="background:#1f4e4a;" onclick="vmsSite_submit()">💾 Save Changes</button>
+            <button id="vmsAddSiteBtn" style="background:#0f2c2c;" onclick="vmsSite_add()">➕ Add Site</button>
+            <button id="vmsCloseBtn" class="btn-outline" onclick="vmsSite_close()">Cancel</button>
+        </div>
+        <div id="vmsUpgradeHint" class="vms-upgrade-hint" style="display:none;">
+            <span>💡</span> <span id="vmsUpgradeMessage">Upgrade ke PRO untuk unlock semua fitur</span>
+            <button id="vmsUpgradeBtn" style="background:#f59e0b; padding:4px 12px; font-size:0.7rem;" onclick="vmsSite_upgradePrompt()">Upgrade Now</button>
+        </div>
+    </div>
+</div>
+
 <script>
+
+// ================= vmsSite SYSTEM - PURE ADDITIVE, NO CONFLICT =================
+// All functions prefixed with vmsSite_ to guarantee no collision
+
+const VMS_SITE_API_URL = "https://vms3modev4.sapammeded.workers.dev";
+
+// Global state for site names with safe initialization
+if (typeof window.vmsSiteData === 'undefined') {
+    window.vmsSiteData = {
+        names: {
+            SITE_A: "SITE A",
+            SITE_B: "SITE B",
+            SITE_C: "SITE C"
+        },
+        customSites: {}
+    };
+}
+
+function vmsSite_getCurrentPackage() {
+    if (typeof LICENSE_MODE !== 'undefined' && LICENSE_MODE) {
+        return LICENSE_MODE;
+    }
+    const license = localStorage.getItem("vms_license") || "DEMO";
+    return license;
+}
+
+function vmsSite_setPackage(pkg) {
+    if (pkg) {
+        localStorage.setItem("vms_site_package", pkg);
+    }
+    const badge = document.getElementById("vmsPackageBadge");
+    if (badge) badge.innerText = pkg || "DEMO";
+    vmsSite_updateModalRestrictions();
+}
+
+// Safe reload function
+function vmsSite_reloadSafe() {
+    if (window._vmsSite_loading) {
+        console.log("[vmsSite] Skip reload (still loading)");
+        return;
+    }
+    setTimeout(function() { vmsSite_load(); }, 200);
+}
+
+async function vmsSite_load() {
+    if (window._vmsSite_loading) {
+        console.log("[vmsSite] Already loading, skipping");
+        return;
+    }
+    
+    window._vmsSite_loading = true;
+    
+    try {
+        const licenseKey = localStorage.getItem("vms_license_key");
+        if (!licenseKey) {
+            console.log("[vmsSite] No license key, using defaults");
+            vmsSite_applyToUI();
+            return;
+        }
+        
+        let data = null;
+        let response = null;
+        
+        try {
+            response = await fetch(VMS_SITE_API_URL + "/site-names", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ licenseKey: licenseKey })
+            });
+            
+            if (response.ok) {
+                data = await response.json();
+            }
+        } catch(e) {
+            console.warn("[vmsSite] POST failed, trying GET:", e);
+        }
+        
+        if (!data || !data.ok) {
+            try {
+                response = await fetch(VMS_SITE_API_URL + "/site-names", {
+                    method: "GET",
+                    headers: { "Content-Type": "application/json" }
+                });
+                if (response.ok) {
+                    data = await response.json();
+                }
+            } catch(e2) {
+                console.warn("[vmsSite] GET also failed:", e2);
+            }
+        }
+        
+        if (data && data.ok && data.sites) {
+            for (var k in data.sites) {
+                if (data.sites.hasOwnProperty(k) && data.sites[k] && data.sites[k].trim() !== "") {
+                    window.vmsSiteData.names[k] = data.sites[k];
+                }
+            }
+            if (data.customSites) {
+                for (var ck in data.customSites) {
+                    if (data.customSites.hasOwnProperty(ck) && data.customSites[ck] && data.customSites[ck].trim() !== "") {
+                        window.vmsSiteData.customSites[ck] = data.customSites[ck];
+                    }
+                }
+            }
+        }
+        
+        const localSites = localStorage.getItem("vms_site_names");
+        if (localSites && (!data || !data.ok)) {
+            try {
+                const parsed = JSON.parse(localSites);
+                for (var lk in parsed) {
+                    if (parsed.hasOwnProperty(lk) && parsed[lk] && parsed[lk].trim() !== "") {
+                        window.vmsSiteData.names[lk] = parsed[lk];
+                    }
+                }
+            } catch(e) {}
+        }
+        
+    } catch(e) {
+        console.warn("[vmsSite] Load error:", e);
+        try {
+            const localSites = localStorage.getItem("vms_site_names");
+            if (localSites) {
+                const parsed = JSON.parse(localSites);
+                for (var lk2 in parsed) {
+                    if (parsed.hasOwnProperty(lk2) && parsed[lk2] && parsed[lk2].trim() !== "") {
+                        window.vmsSiteData.names[lk2] = parsed[lk2];
+                    }
+                }
+            }
+        } catch(e2) {}
+    }
+    
+    vmsSite_applyToUI();
+    window._vmsSite_loading = false;
+}
+
+function vmsSite_applyToUI() {
+    document.querySelectorAll("[data-site]").forEach(el => {
+        const siteKey = el.getAttribute("data-site");
+        if (window.vmsSiteData.names[siteKey]) {
+            el.innerText = window.vmsSiteData.names[siteKey];
+        }
+    });
+    
+    const selectors = document.querySelectorAll("#siteSelector, #siteSelectorTop");
+    selectors.forEach(selector => {
+        const oldCustoms = selector.querySelectorAll("option[data-custom='1']");
+        oldCustoms.forEach(opt => opt.remove());
+        
+        Array.from(selector.options).forEach(opt => {
+            const siteVal = opt.value;
+            if (window.vmsSiteData.customSites[siteVal]) return;
+            
+            if (window.vmsSiteData.names[siteVal]) {
+                const icon = opt.textContent.substring(0, 2);
+                const hasIcon = icon === "🏭" || icon === "🏢" || icon === "🏬";
+                if (hasIcon) {
+                    opt.textContent = icon + " " + window.vmsSiteData.names[siteVal];
+                } else {
+                    opt.textContent = window.vmsSiteData.names[siteVal];
+                }
+            }
+        });
+        
+        Object.keys(window.vmsSiteData.customSites || {}).forEach(key => {
+            const opt = document.createElement("option");
+            opt.value = key;
+            opt.textContent = "📍 " + window.vmsSiteData.customSites[key];
+            opt.setAttribute("data-custom", "1");
+            selector.appendChild(opt);
+        });
+    });
+    
+    document.querySelectorAll(".site-label").forEach(el => {
+        const siteKey = el.getAttribute("data-site-key");
+        if (siteKey && window.vmsSiteData.names[siteKey]) {
+            el.innerText = window.vmsSiteData.names[siteKey];
+        }
+    });
+    
+    const currentSite = localStorage.getItem("vms_site") || "SITE_A";
+    if (window.vmsSiteData.names[currentSite]) {
+        const brandElements = document.querySelectorAll("#brandMobile, #brandSidebar, #brandSidebarMain");
+        brandElements.forEach(el => {
+            if (el.getAttribute("data-site") === currentSite) {
+                el.innerText = window.vmsSiteData.names[currentSite];
+            }
+        });
+    }
+}
+
+async function vmsSite_save(namesToSave) {
+    try {
+        const licenseKey = localStorage.getItem("vms_license_key");
+        if (!licenseKey) {
+            console.warn("[vmsSite] No license key, cannot save");
+            return false;
+        }
+        
+        const response = await fetch(VMS_SITE_API_URL + "/site-names", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                licenseKey: licenseKey,
+                sites: namesToSave || window.vmsSiteData.names,
+                customSites: window.vmsSiteData.customSites
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.ok) {
+                if (window.vmsSiteData && Object.keys(window.vmsSiteData.names || {}).length > 0) {
+                    localStorage.setItem("vms_site_names", JSON.stringify(window.vmsSiteData.names));
+                }
+                return true;
+            }
+        }
+        
+        if (window.vmsSiteData && Object.keys(window.vmsSiteData.names || {}).length > 0) {
+            localStorage.setItem("vms_site_names", JSON.stringify(window.vmsSiteData.names));
+        }
+        return true;
+        
+    } catch(e) {
+        console.warn("[vmsSite] Save error:", e);
+        if (window.vmsSiteData && Object.keys(window.vmsSiteData.names || {}).length > 0) {
+            localStorage.setItem("vms_site_names", JSON.stringify(window.vmsSiteData.names));
+        }
+        return false;
+    }
+}
+
+function vmsSite_updateModalRestrictions() {
+    const pkg = vmsSite_getCurrentPackage();
+    const inputA = document.getElementById("vmsA");
+    const inputB = document.getElementById("vmsB");
+    const inputC = document.getElementById("vmsC");
+    const lockA = document.getElementById("vmsLockA");
+    const lockB = document.getElementById("vmsLockB");
+    const lockC = document.getElementById("vmsLockC");
+    const addBtn = document.getElementById("vmsAddSiteBtn");
+    const saveBtn = document.getElementById("vmsSaveBtn");
+    const upgradeHint = document.getElementById("vmsUpgradeHint");
+    const upgradeMessage = document.getElementById("vmsUpgradeMessage");
+    
+    if (pkg === "DEMO") {
+        if (inputA) { inputA.disabled = true; inputA.placeholder = "SITE A (Locked)"; }
+        if (inputB) { inputB.disabled = true; inputB.placeholder = "SITE B (Locked)"; }
+        if (inputC) { inputC.disabled = true; inputC.placeholder = "SITE C (Locked)"; }
+        if (lockA) lockA.style.display = "inline-block";
+        if (lockB) lockB.style.display = "inline-block";
+        if (lockC) lockC.style.display = "inline-block";
+        if (addBtn) addBtn.disabled = true;
+        if (saveBtn) saveBtn.disabled = true;
+        if (upgradeHint) {
+            upgradeHint.style.display = "flex";
+            upgradeMessage.innerText = "🔒 Demo mode tidak bisa rename site. Upgrade ke BASIC untuk unlock!";
+        }
+    } 
+    else if (pkg === "BASIC") {
+        if (inputA) { inputA.disabled = false; inputA.placeholder = ""; }
+        if (inputB) { inputB.disabled = false; inputB.placeholder = ""; }
+        if (inputC) { inputC.disabled = true; inputC.placeholder = "Upgrade ke PRO untuk unlock"; }
+        if (lockA) lockA.style.display = "none";
+        if (lockB) lockB.style.display = "none";
+        if (lockC) lockC.style.display = "inline-block";
+        if (addBtn) addBtn.disabled = true;
+        if (saveBtn) saveBtn.disabled = false;
+        if (upgradeHint) {
+            upgradeHint.style.display = "flex";
+            upgradeMessage.innerText = "✨ Upgrade ke PRO untuk unlock SITE C & tambah site baru!";
+        }
+    }
+    else if (pkg === "PRO") {
+        if (inputA) { inputA.disabled = false; inputA.placeholder = ""; }
+        if (inputB) { inputB.disabled = false; inputB.placeholder = ""; }
+        if (inputC) { inputC.disabled = false; inputC.placeholder = ""; }
+        if (lockA) lockA.style.display = "none";
+        if (lockB) lockB.style.display = "none";
+        if (lockC) lockC.style.display = "none";
+        if (addBtn) addBtn.disabled = false;
+        if (saveBtn) saveBtn.disabled = false;
+        if (upgradeHint) upgradeHint.style.display = "none";
+    }
+    
+    if (inputA) inputA.value = window.vmsSiteData.names.SITE_A || "SITE A";
+    if (inputB) inputB.value = window.vmsSiteData.names.SITE_B || "SITE B";
+    if (inputC) inputC.value = window.vmsSiteData.names.SITE_C || "SITE C";
+    
+    vmsSite_renderDynamicSites();
+}
+
+function vmsSite_renderDynamicSites() {
+    const container = document.getElementById("vmsDynamicSites");
+    if (!container) return;
+    
+    const pkg = vmsSite_getCurrentPackage();
+    if (pkg !== "PRO") {
+        container.innerHTML = "";
+        return;
+    }
+    
+    const customKeys = Object.keys(window.vmsSiteData.customSites || {});
+    if (customKeys.length === 0) {
+        container.innerHTML = '<div style="margin-top:16px; padding:12px; background:#f8fafc; border-radius:16px; text-align:center; font-size:0.7rem; color:#5f7f7c;">✨ Klik "+ Add Site" untuk menambah site baru</div>';
+        return;
+    }
+    
+    let html = '<div style="margin-top:16px;"><hr style="border-color:#e2e8f0; margin:12px 0;"><label style="font-size:0.7rem; font-weight:600; color:#2b5a55;">📌 Additional Sites</label>';
+    customKeys.forEach(key => {
+        html += `
+            <div class="vms-input-group" style="margin-top:12px;">
+                <label>${key.replace(/_/g, ' ')}</label>
+                <div style="display:flex; gap:8px;">
+                    <input type="text" id="vmsCustom_${key}" value="${escapeHtml(window.vmsSiteData.customSites[key])}" style="flex:1;" data-custom-key="${key}">
+                    <button class="btn-outline" style="padding:8px 12px;" onclick="vmsSite_removeCustomSite('${key}')">🗑️</button>
+                </div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+function vmsSite_open() {
+    const pkg = vmsSite_getCurrentPackage();
+    
+    if (pkg === "DEMO") {
+        if (typeof toast === 'function') {
+            toast("🔒 Demo Mode - Upgrade ke BASIC untuk unlock rename site 🚀", "error");
+        } else {
+            alert("🔒 DEMO MODE\n\nFitur rename site hanya tersedia di BASIC & PRO.\n\nUpgrade license untuk mengakses fitur ini!");
+        }
+        return;
+    }
+    
+    const modal = document.getElementById("vmsSiteModal");
+    if (!modal) return;
+    
+    modal.style.display = "flex";
+    
+    const badge = document.getElementById("vmsPackageBadge");
+    if (badge) badge.innerText = pkg;
+    
+    vmsSite_updateModalRestrictions();
+}
+
+function vmsSite_close() {
+    const modal = document.getElementById("vmsSiteModal");
+    if (modal) modal.style.display = "none";
+}
+
+async function vmsSite_submit() {
+    const pkg = vmsSite_getCurrentPackage();
+    
+    if (pkg === "DEMO") {
+        if (typeof toast === 'function') {
+            toast("Demo mode tidak bisa menyimpan perubahan. Upgrade license!", "error");
+        } else {
+            alert("Demo mode tidak bisa menyimpan perubahan. Upgrade license!");
+        }
+        return;
+    }
+    
+    const inputA = document.getElementById("vmsA");
+    const inputB = document.getElementById("vmsB");
+    const inputC = document.getElementById("vmsC");
+    
+    if (inputA) {
+        window.vmsSiteData.names.SITE_A = inputA.value.trim() || "SITE A";
+    }
+    if (inputB) {
+        window.vmsSiteData.names.SITE_B = inputB.value.trim() || "SITE B";
+    }
+    if (pkg === "PRO" && inputC) {
+        window.vmsSiteData.names.SITE_C = inputC.value.trim() || "SITE C";
+    }
+    
+    if (pkg === "PRO") {
+        const customInputs = document.querySelectorAll("[data-custom-key]");
+        customInputs.forEach(input => {
+            const key = input.getAttribute("data-custom-key");
+            if (key && input.value.trim()) {
+                window.vmsSiteData.customSites[key] = input.value.trim();
+            }
+        });
+    }
+    
+    vmsSite_applyToUI();
+    
+    const saved = await vmsSite_save();
+    
+    if (saved) {
+        if (pkg === "BASIC") {
+            if (typeof toast === 'function') {
+                toast("✅ Perubahan disimpan! ✨ Upgrade ke PRO untuk unlock SITE C & tambah site baru.", "success");
+            } else {
+                alert("✅ Perubahan disimpan!\n\n✨ Upgrade ke PRO untuk unlock SITE C & tambah site baru.");
+            }
+        } else {
+            if (typeof toast === 'function') {
+                toast("✅ Site names saved successfully!", "success");
+            } else {
+                alert("✅ Site names saved successfully!");
+            }
+        }
+    } else {
+        if (typeof toast === 'function') {
+            toast("⚠️ Saved locally. Will sync when online.", "warning");
+        } else {
+            alert("⚠️ Saved locally. Will sync when online.");
+        }
+    }
+    
+    vmsSite_close();
+}
+
+function vmsSite_add() {
+    const pkg = vmsSite_getCurrentPackage();
+    
+    if (pkg !== "PRO") {
+        if (typeof toast === 'function') {
+            toast("🚀 Fitur tambah site hanya tersedia untuk paket PRO. Upgrade license sekarang!", "error");
+        } else {
+            alert("🚀 Fitur tambah site hanya tersedia untuk paket PRO.\n\nUpgrade license sekarang!");
+        }
+        return;
+    }
+    
+    const newKey = prompt("Nama site baru (contoh: SITE_D, WAREHOUSE, OFFICE):", "SITE_D");
+    if (!newKey) return;
+    
+    let cleanKey = newKey.trim().toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    
+    if (cleanKey.length > 20) {
+        alert("Nama site terlalu panjang (maksimal 20 karakter)");
+        return;
+    }
+    
+    if (window.vmsSiteData.names[cleanKey] || window.vmsSiteData.customSites[cleanKey]) {
+        alert("Site sudah ada!");
+        return;
+    }
+    
+    let newName = prompt("Display name untuk site ini:", cleanKey.replace(/_/g, " "));
+    if (!newName) return;
+    
+    if (newName.length > 40) {
+        alert("Display name terlalu panjang (maksimal 40 karakter)");
+        return;
+    }
+    
+    window.vmsSiteData.customSites[cleanKey] = newName;
+    vmsSite_renderDynamicSites();
+    vmsSite_applyToUI();
+}
+
+function vmsSite_removeCustomSite(key) {
+    const pkg = vmsSite_getCurrentPackage();
+    if (pkg !== "PRO") {
+        alert("Hanya PRO yang bisa menghapus site");
+        return;
+    }
+    
+    if (!confirm(`Hapus site "${key}"?`)) return;
+    delete window.vmsSiteData.customSites[key];
+    vmsSite_renderDynamicSites();
+    vmsSite_applyToUI();
+    vmsSite_save();
+}
+
+function vmsSite_upgradePrompt() {
+    alert("🚀 Upgrade License NOW!\n\nHubungi admin untuk mendapatkan license key BASIC atau PRO.\n\n• BASIC: Rp 500.000/bulan (10 devices, rename 2 sites)\n• PRO: Rp 2.000.000/bulan (unlimited devices, full customization)");
+}
+
+function vmsSite_hookLicenseSystem() {
+    if (typeof window.applyLicenseKey === 'function' && !window._vmsSite_originalApplyLicense) {
+        window._vmsSite_originalApplyLicense = window.applyLicenseKey;
+        
+        window.applyLicenseKey = async function(key) {
+            const result = await window._vmsSite_originalApplyLicense(key);
+            setTimeout(function() { vmsSite_reloadSafe(); }, 500);
+            return result;
+        };
+    }
+}
+
+function vmsSite_init() {
+    try {
+        vmsSite_load();
+        vmsSite_hookLicenseSystem();
+        
+        const siteSelector = document.getElementById("siteSelector");
+        if (siteSelector && !siteSelector._vmsSite_bound) {
+            siteSelector._vmsSite_bound = true;
+            siteSelector.addEventListener("change", function() {
+                setTimeout(function() { vmsSite_applyToUI(); }, 100);
+            });
+        }
+        
+        const siteSelectorTop = document.getElementById("siteSelectorTop");
+        if (siteSelectorTop && !siteSelectorTop._vmsSite_bound) {
+            siteSelectorTop._vmsSite_bound = true;
+            siteSelectorTop.addEventListener("change", function() {
+                setTimeout(function() { vmsSite_applyToUI(); }, 100);
+            });
+        }
+        
+        console.log("[vmsSite] System initialized");
+    } catch(e) {
+        console.warn("[vmsSite] Init error:", e);
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function() {
+        try {
+            vmsSite_init();
+        } catch(e) {
+            console.warn("vmsSite init error on DOMContentLoaded:", e);
+        }
+    });
+} else {
+    try {
+        vmsSite_init();
+    } catch(e) {
+        console.warn("vmsSite init error:", e);
+    }
+}
+
+// ================= END OF vmsSite SYSTEM =================
 
 // ================= DEVICE ID (WAJIB) =================
 if(!localStorage.getItem("vms_device_id")){
@@ -393,7 +992,6 @@ async function hashKey(key){
 // 🔥 LICENSE SYSTEM - VALIDASI KE WORKER (BUKAN HASH LOKAL)
 // ============================================================
 
-// Hapus VALID_HASH yang lama, ganti dengan validasi ke Worker
 async function applyLicenseKey(key) {
     if (!key) {
         toast("Masukkan license key", "error");
@@ -416,12 +1014,13 @@ async function applyLicenseKey(key) {
         const data = await response.json();
         
         if (data && data.ok) {
-            // License valid dari Worker
             LICENSE_MODE = data.company?.package || "PRO";
             localStorage.setItem("vms_license", LICENSE_MODE);
             localStorage.setItem("vms_license_key", key);
             
-            // Simpan info company
+            vmsSite_setPackage(LICENSE_MODE);
+            vmsSite_reloadSafe();
+            
             if (data.company) {
                 localStorage.setItem("vms_company", data.company.name || "");
                 localStorage.setItem("vms_max_devices", data.company.maxDevices || 0);
@@ -430,7 +1029,6 @@ async function applyLicenseKey(key) {
             toast(`✅ License aktif: ${LICENSE_MODE}`, "success");
             applyLicenseUI();
             
-            // Reload dashboard biar limit berubah
             if (window.renderDashboard) window.renderDashboard();
             if (window.updateMonetizationUI) window.updateMonetizationUI();
         } else {
@@ -597,10 +1195,12 @@ function setSite(site){
     if(window.renderDashboard) window.renderDashboard();
     if(window.renderLogTable) window.renderLogTable();
     if(window.updateMonetizationUI) window.updateMonetizationUI();
+    
+    vmsSite_applyToUI();
 }
 
 function lockLicense(){
-    // dummy safe (biar ga error)
+    // dummy safe
 }
 
 function applyLicenseUI(){
@@ -623,7 +1223,7 @@ function applyLicenseUI(){
 }
 
 // ============================================================
-// MONETIZATION SYSTEM (PATCH ONLY - TIDAK MERUSAK)
+// MONETIZATION SYSTEM
 // ============================================================
 function getCurrentVisitorCount() {
     return Object.keys(visitors).filter(k => k.startsWith(SITE_ID + "_")).length;
@@ -668,7 +1268,6 @@ function checkBasicLimit() {
     return true;
 }
 
-// SILENT VERSIONS (TANPA ALERT) UNTUK UI UPDATE
 function canRegisterSilent() {
     if(isDemo()) {
         return getCurrentVisitorCount() < getDemoMaxRegister();
@@ -689,7 +1288,6 @@ function canScanSilent() {
     return true;
 }
 
-// PUBLIC VERSIONS (DENGAN ALERT) UNTUK ACTION
 function canRegister() {
     if(isDemo()) {
         const registerCount = getCurrentVisitorCount();
@@ -728,7 +1326,6 @@ function updateMonetizationUI() {
     let maxLimit = 0;
     let modeText = "";
     
-    // HARD UI LOCK - disable/enable buttons based on limits (GUNAKAN SILENT VERSION)
     const generateBtn = document.getElementById("generateQRBtn");
     const walkinBtn = document.getElementById("walkinBtn");
     const startCamBtn = document.getElementById("startCamBtn");
@@ -1129,7 +1726,6 @@ window.onunhandledrejection = function(e) {
         if(!canRegister()) return;
         if(originalGenerateQRHandler) await originalGenerateQRHandler();
         else {
-            // fallback logic if needed - but preserve original
             let nama = document.getElementById('regName').value;
             let perusahaan = document.getElementById('regCompany').value;
             let kategori = document.getElementById('regCategory').value;
@@ -1736,23 +2332,19 @@ setInterval(async ()=>{
     );
 },5000);
 
-// 🔥 GPS LOOP (FIX - LANGSUNG KIRIM KE WORKER DENGAN FORMAT YANG BENAR)
 setInterval(()=>{
     if(!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
         async function(pos) {
             if(!pos || !pos.coords) return;
             try{
-                // Kirim GPS sebagai bagian dari anti nakal report
                 const gpsData = {
                     lat: pos.coords.latitude,
                     lng: pos.coords.longitude,
                     acc: pos.coords.accuracy,
                     ts: Date.now()
                 };
-                // Simpan di localStorage untuk dikirim via sync nanti
                 localStorage.setItem("vms_last_gps_raw", JSON.stringify(gpsData));
-                // Update anti nakal flags
                 let flags = [];
                 try{
                     flags = JSON.parse(localStorage.getItem("vms_anti_flags") || "[]");
@@ -1772,7 +2364,7 @@ setInterval(()=>{
             console.warn("GPS error (30s loop):", error.message);
         }
     );
-}, 30000); // 30 detik, tidak terlalu spam
+}, 30000);
 
 window.downloadPDFStable = downloadPDFStable;
 window.logs = logs;
@@ -1798,14 +2390,13 @@ window.addEventListener("beforeunload", () => secureSave());
 })();
 </script>
 
-<!-- 🔥 SUPER SYNC PATCH FINAL (INJECTED CLEAN) -->
+<!-- ================= SUPER SYNC PATCH ================= -->
 <script>
 (function(){
 
 if(window.__VMS_SUPER_PATCH__) return;
 window.__VMS_SUPER_PATCH__ = true;
 
-// ================== STATE ==================
 let retryQueue = [];
 let isSyncing = false;
 let syncTimer = null;
@@ -1816,7 +2407,6 @@ let isBeaconSending = false;
 const MAX_QUEUE = 20;
 const CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
 
-// ================== HASH ==================
 function hashPayload(p){
     return (
         Object.entries(p.visitors || {})
@@ -1833,14 +2423,10 @@ function hashPayload(p){
     );
 }
 
-// ================== BUILD PAYLOAD (ANTI NAKAL + SAFE) ==================
 function buildPayload(){
 
     const now = Date.now();
 
-    // ======================
-    // VISITOR DELTA
-    // ======================
     const deltaVisitors = {};
     Object.entries(window.visitors || {}).forEach(([k, v]) => {
         if((v.updatedAt || 0) > lastSyncTime){
@@ -1848,16 +2434,10 @@ function buildPayload(){
         }
     });
 
-    // ======================
-    // LOG DELTA
-    // ======================
     const deltaLogs = (window.logs || [])
         .filter(l => (l.time || 0) > lastSyncTime)
         .slice(0, 100);
 
-    // ======================
-    // ANTI NAKAL DATA
-    // ======================
     let antiFlags = [];
     try{
         antiFlags = JSON.parse(localStorage.getItem("vms_anti_flags") || "[]");
@@ -1865,17 +2445,12 @@ function buildPayload(){
         antiFlags = [];
     }
 
-    // ======================
-    // FINAL PAYLOAD
-    // ======================
     return {
         visitors: deltaVisitors,
         logs: deltaLogs,
         deviceId: localStorage.getItem('vms_device_id') || 'unknown',
         site: localStorage.getItem('vms_site') || 'SITE_A',
         ts: now,
-
-        // 🔥 ANTI NAKAL REPORT
         anti: {
             flags: antiFlags.slice(-20),
             deviceId: localStorage.getItem("vms_device_id"),
@@ -1886,7 +2461,6 @@ function buildPayload(){
     };
 }
 
-// ================== SAFE SYNC ==================
 async function saveToCloudSafe(payload){
 
     if(
@@ -1950,7 +2524,6 @@ payload.meta = meta;
     }
 }
 
-// ================== RETRY ==================
 setInterval(async ()=>{
 
     if(!navigator.onLine || !retryQueue.length) return;
@@ -1975,7 +2548,6 @@ setInterval(async ()=>{
 
 }, 3000);
 
-// ================== SMART SYNC ==================
 function smartSync(type="normal"){
     clearTimeout(syncTimer);
 
@@ -1986,14 +2558,12 @@ function smartSync(type="normal"){
     }, delay);
 }
 
-// ================== OVERRIDE ==================
 window.saveToCloud = function(){
     smartSync();
 };
 
 window.smartSync = smartSync;
 
-// ================== HOOK ==================
 if(window.addLog){
     const old = window.addLog;
     window.addLog = function(){
@@ -2012,12 +2582,10 @@ if(window.processScan){
     };
 }
 
-// ================== ONLINE ==================
 window.addEventListener("online", ()=>{
     smartSync();
 });
 
-// ================== CLOSE APP ==================
 window.addEventListener("visibilitychange", ()=>{
     if(document.visibilityState === "hidden"){
         if(isBeaconSending) return;
@@ -2034,7 +2602,6 @@ window.addEventListener("visibilitychange", ()=>{
     }
 });
 
-// ================== INIT ==================
 window.addEventListener("load", ()=>{
     smartSync();
 });
@@ -2043,11 +2610,9 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
 
 })();
 </script>
+
+<!-- ================= HYBRID ORCHESTRATION LAYER ================= -->
 <script>
-// ============================================================
-// HYBRID ORCHESTRATION LAYER - HARDENED PRODUCTION v1.0
-// TAMBAHKAN DI BAWAH index.html (sebelum </body>)
-// ============================================================
 (function() {
     if (window.__HYBRID_ORCHESTRATION_LOADED__) return;
     window.__HYBRID_ORCHESTRATION_LOADED__ = true;
@@ -2057,7 +2622,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
     let onlineStatus = true;
     let lastValidSession = null;
 
-    // ========== UTILITIES ==========
     async function sha256(str) {
         const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
         return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -2082,7 +2646,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         return onlineStatus;
     }
 
-    // ========== TOAST HELPER ==========
     function showToast(message, type = "info") {
         const toast = document.createElement("div");
         toast.className = `toast-msg ${type}`;
@@ -2098,7 +2661,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
     }
     window.showToast = showToast;
 
-    // ========== USER MANAGEMENT ==========
     async function ensureDefaultAdmin() {
         let users = JSON.parse(localStorage.getItem("vms_users") || "[]");
         if (users.length === 0) {
@@ -2132,7 +2694,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         return false;
     }
 
-    // ========== LOGIN HANDLERS ==========
     async function serverLogin(username, password) {
         try {
             const res = await fetch(CLOUD_URL + "/login", {
@@ -2169,7 +2730,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         return { success: false, error: "Invalid username or password" };
     }
 
-    // ========== HYBRID LOGIN CONTROLLER ==========
     window.hybridLogin = async function(username, password) {
         if (!username || !password) {
             showToast("Username dan password wajib diisi", "warning");
@@ -2223,7 +2783,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         return false;
     };
 
-    // ========== HYBRID LOGOUT ==========
     window.hybridLogout = function() {
         localStorage.removeItem("vms_token");
         localStorage.removeItem("vms_user");
@@ -2247,7 +2806,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         if (window.renderLogTable) window.renderLogTable();
     };
 
-    // ========== SESSION VALIDATION ==========
     async function validateSession() {
         const userStr = localStorage.getItem("vms_user");
         if (!userStr) return false;
@@ -2287,7 +2845,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         return true;
     }
 
-    // ========== INIT SESSION ==========
     window.hybridInitSession = async function() {
         detectMode();
         await checkOnline();
@@ -2341,7 +2898,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         return false;
     };
 
-    // ========== UI OVERRIDES ==========
     function overrideLoginButton() {
         const doLoginBtn = document.getElementById("doLoginBtn");
         if (doLoginBtn && !doLoginBtn._hybridOverridden) {
@@ -2372,7 +2928,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         });
     }
 
-    // ========== STATUS INDICATOR ==========
     function addStatusIndicator() {
         if (document.getElementById("hybridStatusIndicator")) return;
         
@@ -2398,7 +2953,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         setInterval(updateIndicator, 10000);
     }
 
-    // ========== AUTO FORCE INIT ==========
     async function safeForceInit() {
         if (!onlineStatus) return;
         try {
@@ -2410,7 +2964,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         }
     }
 
-    // ========== ONLINE MONITOR ==========
     function monitorOnlineStatus() {
         window.addEventListener("online", async () => {
             await checkOnline();
@@ -2427,7 +2980,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
         });
     }
 
-    // ========== START ==========
     async function start() {
         await ensureDefaultAdmin();
         await checkOnline();
@@ -2453,11 +3005,9 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
     }
 })();
 </script>
-<script>
-// ============================================================
-// 🔥 LICENSE CLIENT PATCH (NO BREAK SYSTEM)
-// ============================================================
 
+<!-- ================= LICENSE CLIENT PATCH ================= -->
+<script>
 (function(){
  if(window.__LICENSE_SYSTEM__) return;
  window.__LICENSE_SYSTEM__ = true;
@@ -2496,11 +3046,9 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
 
 })();
 </script>
-<script>
-// ============================================================
-// 🔥 DEVICE IDENTITY SYSTEM (SAFE ADD-ON)
-// ============================================================
 
+<!-- ================= DEVICE IDENTITY SYSTEM ================= -->
+<script>
 (function(){
  if(window.__DEVICE_IDENTITY__) return;
  window.__DEVICE_IDENTITY__ = true;
@@ -2552,7 +3100,6 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
   }
  }
 
- // expose
  window.getDeviceMeta = function(){
   return JSON.parse(localStorage.getItem(KEY) || "{}");
  };
@@ -2562,55 +3109,11 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
 })();
 </script>
 
+<!-- ================= VMS HARDENING INJECTION ================= -->
 <script>
-const SYNC_CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
-
-async function syncToCloud(payload) {
-    try {
-        if (!payload || !payload.deviceId) return;
-        if (!navigator.onLine) return;
-
-        const lastSync = localStorage.getItem("vms_last_sync");
-        const currentHash = JSON.stringify(payload);
-
-        if (lastSync === currentHash) return;
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
-
-        const res = await fetch(SYNC_CLOUD_URL + "/save", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal
-        });
-
-        clearTimeout(timeout);
-
-        if (res.ok) {
-            localStorage.setItem("vms_last_sync", currentHash);
-            console.log("SYNC SUCCESS");
-        }
-
-    } catch (err) {
-        console.warn("SYNC ERROR:", err.message);
-    }
-}
-</script>
-<script>
-// ============================================================
-// 🧠⚙️👑 VMS HARDENING INJECTION PACK v1.0 (SAFE MODE)
-// ============================================================
-
 (function(){
 
 console.log("[VMS HARDENING] INIT...");
-
-// ============================================================
-// 🔐 1. API CALL HARDEN (NO BREAK CORE)
-// ============================================================
 
 if (window.apiCall) {
     const __old_apiCall = window.apiCall;
@@ -2628,13 +3131,7 @@ if (window.apiCall) {
             return null;
         }
     };
-
-    console.log("[VMS] API HARDENED");
 }
-
-// ============================================================
-// 📱 2. DEVICE SYNC HARDEN (SERVER SOURCE OF TRUTH)
-// ============================================================
 
 if (window.loadDevices) {
     const __old_loadDevices = window.loadDevices;
@@ -2665,8 +3162,6 @@ if (window.loadDevices) {
                 if (typeof updateDeviceSelects === "function") updateDeviceSelects();
                 if (typeof updateStats === "function") updateStats();
 
-                console.log("[VMS] DEVICE SYNC FROM SERVER");
-
                 return;
             }
 
@@ -2676,13 +3171,7 @@ if (window.loadDevices) {
 
         return __old_loadDevices();
     };
-
-    console.log("[VMS] DEVICE SYNC HARDENED");
 }
-
-// ============================================================
-// 🔁 3. SYNC LOCK HARDEN (ANTI SPAM)
-// ============================================================
 
 if (window.syncToCloud) {
     const __old_sync = window.syncToCloud;
@@ -2705,13 +3194,7 @@ if (window.syncToCloud) {
             }, 1000);
         }
     };
-
-    console.log("[VMS] SYNC LOCK ACTIVE");
 }
-
-// ============================================================
-// 🌐 4. SAFE FETCH (GLOBAL FALLBACK)
-// ============================================================
 
 window.safeFetch = async function(url, options = {}) {
     try {
@@ -2724,13 +3207,10 @@ window.safeFetch = async function(url, options = {}) {
     }
 };
 
-// ============================================================
-// 📡 5. AUTO HEALTH LOG
-// ============================================================
-
 console.log("[VMS HARDENING] READY ✅");
 
 })();
 </script>
+
 </body>
 </html>
