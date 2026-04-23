@@ -373,7 +373,7 @@ async function runAntiNakalCheck(){
 }
 
 // ========== CLOUD CONFIGURATION ==========
-const CLOUD_URL = "https://vms3mode.sapammeded.workers.dev";
+const CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
 
 function isCloudAllowed(){
     return !isDemo();
@@ -1814,7 +1814,7 @@ let lastPayloadHash = "";
 let isBeaconSending = false;
 
 const MAX_QUEUE = 20;
-const CLOUD_URL = "https://vms3mode.sapammeded.workers.dev";
+const CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
 
 // ================== HASH ==================
 function hashPayload(p){
@@ -2052,7 +2052,7 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
     if (window.__HYBRID_ORCHESTRATION_LOADED__) return;
     window.__HYBRID_ORCHESTRATION_LOADED__ = true;
 
-    const CLOUD_URL = "https://vms3mode.sapammeded.workers.dev";
+    const CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
     let currentMode = "DEMO";
     let onlineStatus = true;
     let lastValidSession = null;
@@ -2563,7 +2563,7 @@ console.log("🔥 SUPER PATCH ACTIVE (CLEAN INJECT)");
 </script>
 
 <script>
-const SYNC_CLOUD_URL = "https://vms3mode.sapammeded.workers.dev";
+const SYNC_CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
 
 async function syncToCloud(payload) {
     try {
