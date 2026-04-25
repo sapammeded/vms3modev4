@@ -1,4 +1,4 @@
-// ==================== VMS WORKER v3.0 - LOGIN TOTAL FIXED ====================
+// ==================== VMS WORKER v3.0 - FINAL HARDENING ====================
 // Cloudflare Worker untuk VMS SAPAM MEDED
 // FIX: Single write, memory cache, no random login fail
 
@@ -38,6 +38,11 @@ function scopedKey(base, licenseKey) {
 // ==================== GLOBAL SESSION CACHE ====================
 if (!globalThis.__session_cache) {
     globalThis.__session_cache = {};
+}
+
+// ==================== FIX 2: GLOBAL RESET LOCK ====================
+if (globalThis.__reset_lock === undefined) {
+    globalThis.__reset_lock = false;
 }
 
 // ==================== MAIN HANDLER ====================
@@ -97,10 +102,12 @@ export default {
             
             // ==================== LOGIN FIX - SINGLE WRITE + CACHE ====================
             if (path === '/login' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { username, password } = body;
                 
-                console.log(`[LOGIN] Attempt for username: ${username}`);
+                // FIX 7: Log throttle (10% sampling)
+                if (Math.random() < 0.1) console.log(`[LOGIN] Attempt for username: ${username}`);
                 
                 let admins = await safeArray(env, 'admins');
                 if (!admins || admins.length === 0) {
@@ -110,7 +117,7 @@ export default {
                 
                 const index = admins.findIndex(a => a.username === username);
                 if (index === -1) {
-                    console.log(`[LOGIN] User not found: ${username}`);
+                    if (Math.random() < 0.1) console.log(`[LOGIN] User not found: ${username}`);
                     return new Response(JSON.stringify({ ok: false, error: 'User not found' }), { 
                         headers: corsHeaders, 
                         status: 401 
@@ -118,25 +125,25 @@ export default {
                 }
                 
                 const admin = admins[index];
-                console.log(`[LOGIN] User found: ${admin.username}, role: ${admin.role}`);
+                if (Math.random() < 0.1) console.log(`[LOGIN] User found: ${admin.username}, role: ${admin.role}`);
                 
                 const hashedInputPassword = await sha256(password);
                 let isValid = (hashedInputPassword === admin.password);
                 
                 if (!isValid && admin.password === password) {
-                    console.log(`[LOGIN] Plain text match, upgrading to hash...`);
+                    if (Math.random() < 0.1) console.log(`[LOGIN] Plain text match, upgrading to hash...`);
                     isValid = true;
                     admins[index].password = hashedInputPassword;
                 }
                 
                 if (!isValid && username === 'admin' && password === '123456') {
-                    console.log(`[LOGIN] Using default admin fallback`);
+                    if (Math.random() < 0.1) console.log(`[LOGIN] Using default admin fallback`);
                     isValid = true;
                     admins[index].password = await sha256('123456');
                 }
                 
                 if (!isValid) {
-                    console.log(`[LOGIN] Password invalid for: ${username}`);
+                    if (Math.random() < 0.1) console.log(`[LOGIN] Password invalid for: ${username}`);
                     return new Response(JSON.stringify({ ok: false, error: 'Invalid password' }), { 
                         headers: corsHeaders, 
                         status: 401 
@@ -166,7 +173,7 @@ export default {
                     }
                 }
                 
-                console.log(`[LOGIN] Success for: ${username}, token saved to KV + cache`);
+                if (Math.random() < 0.1) console.log(`[LOGIN] Success for: ${username}, token saved to KV + cache`);
                 
                 return new Response(JSON.stringify({
                     ok: true,
@@ -189,11 +196,13 @@ export default {
                 
                 if (!token) return null;
                 
-                const trimmedToken = token.trim();
+                // FIX 4: Hardened token trim
+                const trimmedToken = (token || '').trim();
+                if (!trimmedToken) return null;
                 
                 // 🔥 1. MEMORY CACHE FIRST (LANGSUNG TEMBUS)
                 if (globalThis.__session_cache[trimmedToken]) {
-                    console.log(`[AUTH] Cache hit for token: ${trimmedToken.substring(0, 20)}...`);
+                    if (Math.random() < 0.1) console.log(`[AUTH] Cache hit for token: ${trimmedToken.substring(0, 20)}...`);
                     return globalThis.__session_cache[trimmedToken];
                 }
                 
@@ -209,7 +218,7 @@ export default {
                     };
                     // Simpan ke cache untuk request berikutnya
                     globalThis.__session_cache[trimmedToken] = session;
-                    console.log(`[AUTH] Cache miss, loaded from KV for: ${admin.username}`);
+                    if (Math.random() < 0.1) console.log(`[AUTH] Cache miss, loaded from KV for: ${admin.username}`);
                     return session;
                 }
                 
@@ -236,85 +245,119 @@ export default {
                 });
             }
             
-            // ==================== 🔧 PATCH 1 - RESET SYSTEM (FIXED with flexible confirm) ====================
+            // ==================== RESET SYSTEM (FIXED with flexible confirm + hardening) ====================
             if (path === '/admin/reset-system' && request.method === 'POST') {
-                const body = await request.json().catch(() => ({}));
-
-                // 🔧 BUG 1 FIX: support confirm via body OR header
-                if (
-                    !body ||
-                    (body.confirm !== 'RESET_TOTAL' &&
-                     request.headers.get('x-reset-confirm') !== 'RESET_TOTAL')
-                ) {
+                // FIX 1: SUPER_ADMIN only guard
+                if (!auth || auth.role !== 'SUPER_ADMIN') {
                     return new Response(JSON.stringify({
                         ok: false,
-                        error: 'CONFIRMATION_REQUIRED'
+                        error: 'FORBIDDEN'
+                    }), { headers: corsHeaders, status: 403 });
+                }
+                
+                // FIX 2: Prevent double reset execution
+                if (globalThis.__reset_lock) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: 'RESET_IN_PROGRESS'
                     }), { headers: corsHeaders });
                 }
                 
-                // 🔥 BONUS: Logging
-                console.log('[RESET_SYSTEM]', {
-                    by: auth?.username || 'unknown',
-                    time: Date.now()
-                });
+                globalThis.__reset_lock = true;
                 
-                // Clear session cache
-                globalThis.__session_cache = {};
-                
-                let admins = await safeArray(env, 'admins');
-                
-                // Reset all admin tokens
-                for (let i = 0; i < admins.length; i++) {
-                    admins[i].token = null;
-                }
-                await saveData(env, 'admins', admins);
-                
-                const oldCompanies = await safeArray(env, 'companies');
-                
-                const scopedKeysList = [
-                    'devices',
-                    'visitors',
-                    'logs',
-                    'activities',
-                    'violations',
-                    'anti_nakal_reports'
-                ];
-                
-                for (const company of oldCompanies) {
-                    if (!company.licenseKey) continue;
+                try {
+                    // FIX 3: Safe JSON parse
+                    const body = await request.json().catch(() => ({}));
+
+                    // flexible confirm: support body OR header
+                    if (
+                        !body ||
+                        (body.confirm !== 'RESET_TOTAL' &&
+                         request.headers.get('x-reset-confirm') !== 'RESET_TOTAL')
+                    ) {
+                        return new Response(JSON.stringify({
+                            ok: false,
+                            error: 'CONFIRMATION_REQUIRED'
+                        }), { headers: corsHeaders });
+                    }
                     
-                    for (const baseKey of scopedKeysList) {
-                        const key = scopedKey(baseKey, company.licenseKey);
+                    // FIX 7: Log throttle
+                    if (Math.random() < 0.1) console.log('[RESET_SYSTEM]', {
+                        by: auth?.username || 'unknown',
+                        time: Date.now()
+                    });
+                    
+                    // Clear session cache
+                    globalThis.__session_cache = {};
+                    
+                    let admins = await safeArray(env, 'admins');
+                    
+                    // Reset all admin tokens
+                    for (let i = 0; i < admins.length; i++) {
+                        admins[i].token = null;
+                    }
+                    await saveData(env, 'admins', admins);
+                    
+                    const oldCompanies = await safeArray(env, 'companies');
+                    
+                    const scopedKeysList = [
+                        'devices',
+                        'visitors',
+                        'logs',
+                        'activities',
+                        'violations',
+                        'anti_nakal_reports'
+                    ];
+                    
+                    for (const company of oldCompanies) {
+                        if (!company.licenseKey) continue;
                         
-                        if (baseKey === 'visitors') {
-                            await saveData(env, key, {});
-                        } else {
-                            await saveData(env, key, []);
+                        for (const baseKey of scopedKeysList) {
+                            const key = scopedKey(baseKey, company.licenseKey);
+                            
+                            if (baseKey === 'visitors') {
+                                await saveData(env, key, {});
+                            } else {
+                                await saveData(env, key, []);
+                            }
                         }
                     }
+                    
+                    await saveData(env, 'companies', []);
+                    await saveData(env, 'invoices', []);
+                    await saveData(env, 'device_requests', []);
+                    await saveData(env, 'users_from_clients', []);
+                    await saveData(env, 'visitors', {});
+                    await saveData(env, 'activities', []);
+                    await saveData(env, 'logs', []);
+                    await saveData(env, 'anti_nakal_reports', []);
+                    await saveData(env, 'violations', []);
+                    await saveData(env, 'devices', []);
+                    
+                    await forceInit(env);
+                    
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        message: 'SYSTEM RESET SUCCESS. Login again.'
+                    }), { headers: corsHeaders });
+                    
+                } finally {
+                    // FIX 2: Release lock
+                    globalThis.__reset_lock = false;
                 }
-                
-                await saveData(env, 'companies', []);
-                await saveData(env, 'invoices', []);
-                await saveData(env, 'device_requests', []);
-                await saveData(env, 'users_from_clients', []);
-                await saveData(env, 'visitors', {});
-                await saveData(env, 'activities', []);
-                await saveData(env, 'logs', []);
-                await saveData(env, 'anti_nakal_reports', []);
-                await saveData(env, 'violations', []);
-                await saveData(env, 'devices', []);
-                
-                await forceInit(env);
-                
-                return new Response(JSON.stringify({
-                    ok: true,
-                    message: 'SYSTEM RESET SUCCESS. Login again.'
-                }), { headers: corsHeaders });
             }
             
-            // ==================== 🔧 PATCH 2 - RESET PER COMPANY ====================
+            // ==================== RESET PER COMPANY ====================
             if (path === '/admin/reset-company' && request.method === 'POST') {
+                // FIX 1: SUPER_ADMIN only guard
+                if (!auth || auth.role !== 'SUPER_ADMIN') {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: 'FORBIDDEN'
+                    }), { headers: corsHeaders, status: 403 });
+                }
+                
+                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { companyId } = body;
 
@@ -356,15 +399,15 @@ export default {
                     }
                 }
 
-                // 🔥 BUG 3 FIX: global cleanup for this company's data
+                // global cleanup for this company's data
                 await saveData(env, 'activities', []);
                 await saveData(env, 'logs', []);
 
                 company.currentDevices = 0;
                 await saveData(env, 'companies', companies);
 
-                // 🔥 BONUS: Logging
-                console.log('[RESET_COMPANY]', {
+                // FIX 7: Log throttle
+                if (Math.random() < 0.1) console.log('[RESET_COMPANY]', {
                     companyId,
                     by: auth?.username || 'unknown',
                     time: Date.now()
@@ -455,8 +498,10 @@ export default {
                 }
             }
             
+            // ==================== CLIENT ENDPOINTS (with safe JSON parse) ====================
             if (path === '/validate-license' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, deviceName, meta } = body;
                 
                 if (!licenseKey) {
@@ -536,7 +581,8 @@ export default {
             }
             
             if (path === '/client/devices' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { licenseKey } = body;
                 
                 if (!licenseKey) {
@@ -551,7 +597,8 @@ export default {
             }
             
             if (path === '/site-names' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { licenseKey, sites, customSites } = body;
                 
                 if (!licenseKey) {
@@ -603,7 +650,8 @@ export default {
             }
             
             if (path === '/checkin' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, action, location, qrData } = body;
                 
                 if (!licenseKey || !deviceId) {
@@ -649,7 +697,12 @@ export default {
                     type: action === 'IN' ? 'CHECK_IN' : 'CHECK_OUT'
                 };
                 activities.unshift(activity);
-                await saveData(env, activitiesKey, activities.slice(0, 5000));
+                
+                // FIX 6: Limit activity memory
+                if (activities.length > 5000) {
+                    activities = activities.slice(0, 5000);
+                }
+                await saveData(env, activitiesKey, activities);
                 
                 device.lastSeen = Date.now();
                 await saveData(env, devicesKey, devices);
@@ -667,7 +720,12 @@ export default {
                     location: location,
                     timestamp: Date.now()
                 });
-                await saveData(env, logsKey, logs.slice(0, 10000));
+                
+                // FIX 6: Limit logs memory
+                if (logs.length > 10000) {
+                    logs = logs.slice(0, 10000);
+                }
+                await saveData(env, logsKey, logs);
                 
                 const violationStatus = await getViolationStatus(licenseKey);
                 
@@ -679,11 +737,12 @@ export default {
             }
             
             if (path === '/save' && request.method === 'POST') {
+                // FIX 3: Safe JSON parse
                 let body;
                 try {
                     body = await request.json();
                 } catch(e) {
-                    return new Response(JSON.stringify({ ok: false, error: 'INVALID_JSON' }), { headers: corsHeaders });
+                    body = {};
                 }
                 
                 const { licenseKey, deviceId } = body;
@@ -791,7 +850,12 @@ export default {
                         const logsKey = scopedKey('logs', licenseKey);
                         let allLogs = await safeArray(env, logsKey);
                         allLogs = [...validLogs, ...allLogs];
-                        await saveData(env, logsKey, allLogs.slice(0, 10000));
+                        
+                        // FIX 6: Limit logs memory
+                        if (allLogs.length > 10000) {
+                            allLogs = allLogs.slice(0, 10000);
+                        }
+                        await saveData(env, logsKey, allLogs);
                     }
                 }
                 
@@ -806,7 +870,12 @@ export default {
                         licenseKey: licenseKey,
                         timestamp: Date.now()
                     });
-                    await saveData(env, reportsKey, reports.slice(0, 5000));
+                    
+                    // FIX 6: Limit reports memory
+                    if (reports.length > 5000) {
+                        reports = reports.slice(0, 5000);
+                    }
+                    await saveData(env, reportsKey, reports);
                 }
                 
                 device.lastSeen = Date.now();
@@ -816,7 +885,8 @@ export default {
             }
             
             if (path === '/violation-status' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { licenseKey } = body;
                 
                 if (!licenseKey) {
@@ -828,7 +898,8 @@ export default {
             }
             
             if (path === '/report-violation' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, violationType, details, location } = body;
                 
                 const companies = await safeArray(env, 'companies');
@@ -872,7 +943,12 @@ export default {
                     ...violation,
                     type: 'VIOLATION_REPORTED'
                 });
-                await saveData(env, activitiesKey, activities.slice(0, 5000));
+                
+                // FIX 6: Limit activity memory
+                if (activities.length > 5000) {
+                    activities = activities.slice(0, 5000);
+                }
+                await saveData(env, activitiesKey, activities);
                 
                 return new Response(JSON.stringify({
                     ok: true,
@@ -932,7 +1008,8 @@ export default {
             }
             
             if (path === '/request-approval' && request.method === 'POST') {
-                const requestBody = await request.json();
+                // FIX 3: Safe JSON parse
+                const requestBody = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, deviceName, reason } = requestBody;
                 
                 const companies = await safeArray(env, 'companies');
@@ -958,7 +1035,8 @@ export default {
             }
             
             if (path === '/request-device' && request.method === 'POST') {
-                const requestBody = await request.json();
+                // FIX 3: Safe JSON parse
+                const requestBody = await request.json().catch(() => ({}));
                 const { licenseKey, deviceName, reason } = requestBody;
                 
                 const companies = await safeArray(env, 'companies');
@@ -1143,7 +1221,8 @@ export default {
             }
             
             if (path === '/approve-device-request' && request.method === 'POST') {
-                const requestBody = await request.json();
+                // FIX 3: Safe JSON parse
+                const requestBody = await request.json().catch(() => ({}));
                 const { requestId, approve, notes } = requestBody;
                 
                 let deviceRequests = await safeArray(env, 'device_requests');
@@ -1189,7 +1268,8 @@ export default {
             }
             
             if (path === '/generate-license' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { companyName, pic, phone, email, address, package: pkg, customMaxDevices, notes } = body;
                 
                 if (!companyName || !pic || !phone || !email) {
@@ -1236,7 +1316,8 @@ export default {
             }
             
             if (path === '/renew-license' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { companyId, months, amount, paymentMethod } = body;
                 
                 const companies = await safeArray(env, 'companies');
@@ -1272,7 +1353,8 @@ export default {
             }
             
             if (path === '/update-package' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { companyId, newPackage, customMaxDevices, notes } = body;
                 
                 const companies = await safeArray(env, 'companies');
@@ -1296,7 +1378,8 @@ export default {
             }
             
             if (path === '/approve-device' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { deviceId, approve } = body;
                 
                 const companies = await safeArray(env, 'companies');
@@ -1340,7 +1423,8 @@ export default {
             }
             
             if (path === '/delete-device' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { deviceId, reason } = body;
                 
                 const companies = await safeArray(env, 'companies');
@@ -1363,7 +1447,8 @@ export default {
             }
             
             if (path === '/delete-company' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { companyId } = body;
                 
                 const companies = await safeArray(env, 'companies');
@@ -1394,7 +1479,8 @@ export default {
             }
             
             if (path === '/mark-invoice-paid' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { invoiceId, paymentMethod } = body;
                 
                 const invoices = await safeArray(env, 'invoices');
@@ -1452,7 +1538,8 @@ export default {
             }
             
             if (path === '/admin/add-user' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { username, password, role } = body;
                 
                 if (!username || !password) {
@@ -1478,7 +1565,8 @@ export default {
             }
             
             if (path === '/admin/delete-user' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 const { username } = body;
                 
                 if (username === 'admin') {
@@ -1493,7 +1581,8 @@ export default {
             }
             
             if (path === '/admin/settings' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 await saveData(env, 'settings', body);
                 return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
             }
@@ -1504,7 +1593,8 @@ export default {
             }
             
             if (path === '/sync-users' && request.method === 'POST') {
-                const body = await request.json();
+                // FIX 3: Safe JSON parse
+                const body = await request.json().catch(() => ({}));
                 if (body.users && Array.isArray(body.users)) {
                     let serverUsers = await safeArray(env, 'users_from_clients');
                     for (const user of body.users) {
@@ -1690,6 +1780,11 @@ async function getData(env, key) {
 
 async function saveData(env, key, data) {
     try {
+        // FIX 5: Safe array write (anti corrupt)
+        if (data === undefined || data === null) {
+            data = [];
+        }
+        
         if (!env || !env.VMS_STORAGE) {
             console.error(`[SAVE_DATA] KV Storage not available for key: ${key}`);
             return false;
