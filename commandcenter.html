@@ -1027,7 +1027,7 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-    const API_URL = "https://vms3modev4.sapammeded.workers.dev";
+    const API_URL = "https://vms3mode.sapammeded.workers.dev";
     
     let token = localStorage.getItem("vms_admin_token") || null;
     let currentUser = null;
@@ -1083,7 +1083,6 @@
             
             console.log(`[API_CALL] Response status: ${res.status}`);
             
-            // FIX: handle error response properly
             if (!res.ok) {
                 const text = await res.text();
                 console.error("[API ERROR]", res.status, text);
@@ -1206,7 +1205,6 @@
     }
 
     async function loadAllData() {
-        // FIX: sync lock to prevent spam requests
         if (syncLock) return;
         syncLock = true;
         
@@ -1605,18 +1603,35 @@
         }
     }
 
+    // 🔥 PATCH: SAFE DELETE COMPANY (FIXED)
     async function deleteCompany(companyId) {
-        if (!confirm("Delete this company and all its devices? This action cannot be undone.")) return;
+        const confirmText = prompt("⚠️ PERINGATAN! Ketik DELETE untuk hapus company ini permanen\n\nSemua data termasuk device, visitor, log akan hilang.");
+        
+        if (confirmText !== "DELETE") {
+            showToast("Dibatalkan", "warning");
+            return;
+        }
+        
+        const confirmFinal = confirm("🔴 KONFIRMASI AKHIR: Semua data company akan dihapus PERMANEN. Lanjutkan?");
+        if (!confirmFinal) return;
+        
+        showToast("Menghapus company...", "info");
         
         const data = await apiCall("/delete-company", {
             method: "POST",
-            body: JSON.stringify({ companyId, reason: "Deleted by admin" })
+            body: JSON.stringify({
+                companyId,
+                confirm: "DELETE_PERMANENT"
+            })
         });
         
         if (data && data.ok) {
-            showToast("Company deleted", "success");
+            showToast(`✅ Company deleted permanently (mode: ${data.mode})`, "success");
             loadCompanies();
             loadDevices();
+            loadStats();
+        } else {
+            showToast(data?.error || "Delete failed", "error");
         }
     }
 
@@ -1730,7 +1745,7 @@
                                     <td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${d.status}</span></span></span></td>
                                     <td>${formatDateTime(d.lastSeen)}</span></td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="4" class="text-muted">No devices</span></tr>'}
+                            `).join('') || '<td><td colspan="4" class="text-muted">No devices</span></tr>'}
                         </tbody>
                     </table>
                 </div>
@@ -1945,11 +1960,32 @@
         showToast("Violations cleared", "success");
     }
 
-    function resetSystem() {
-        if (!confirm("⚠️ DANGER: This will delete ALL data! Are you ABSOLUTELY sure? Type 'RESET' to confirm.")) return;
-        const confirmText = prompt("Type 'RESET' to confirm:");
-        if (confirmText === "RESET") {
-            showToast("System reset requested", "warning");
+    // 💣 PATCH: RESET GOD MODE (FIXED)
+    async function resetSystem() {
+        const confirmText = prompt("💣 PERINGATAN BERAT! Ketik RESET_GOD_MODE untuk wipe SEMUA DATA SYSTEM\n\nIni akan menghapus: semua company, device, visitor, log, invoice, violation.\nAdmin dan settings TIDAK akan terhapus.");
+        
+        if (confirmText !== "RESET_GOD_MODE") {
+            showToast("Reset dibatalkan - kode salah", "warning");
+            return;
+        }
+        
+        const confirmFinal = confirm("🔴🔴🔴 KONFIRMASI AKHIR: INI AKAN MENGHAPUS SEMUA DATA COMPANY! Yakin? 🔴🔴🔴");
+        if (!confirmFinal) return;
+        
+        showToast("Memproses reset system...", "info");
+        
+        const data = await apiCall("/admin/reset-system", {
+            method: "POST",
+            body: JSON.stringify({
+                confirm: "RESET_GOD_MODE"
+            })
+        });
+        
+        if (data && data.ok) {
+            showToast(`💣 SYSTEM RESET TOTAL! ${data.wipedCompanies} companies wiped. Refresh halaman...`, "success");
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            showToast(data?.error || "Reset gagal", "error");
         }
     }
 
