@@ -1027,9 +1027,8 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-    const API_URL = "https://vms3mode.sapammeded.workers.dev";
+    const API_URL = "https://vms3modev4.sapammeded.workers.dev";
     
-    let token = localStorage.getItem("vms_admin_token") || null;
     let currentUser = null;
     let refreshInterval = null;
     
@@ -1063,53 +1062,46 @@
         try {
             const headers = {
                 "Content-Type": "application/json",
-                ...options.headers
+                ...(options.headers || {})
             };
-            
-            const currentToken = token || localStorage.getItem("vms_admin_token");
+
+            const currentToken = localStorage.getItem("vms_admin_token");
+
             if (currentToken) {
                 headers["x-token"] = currentToken;
-                console.log(`[API_CALL] Using token: ${currentToken.substring(0, 20)}...`);
             }
-            
+
             const url = API_URL + endpoint;
-            console.log(`[API_CALL] ${options.method || 'GET'} ${url}`);
-            
             const res = await fetch(url, {
                 ...options,
-                headers,
-                credentials: 'omit'
+                headers
             });
-            
-            console.log(`[API_CALL] Response status: ${res.status}`);
-            
-            if (!res.ok) {
-                const text = await res.text();
-                console.error("[API ERROR]", res.status, text);
-                throw new Error("API ERROR " + res.status + " " + text.substring(0, 100));
-            }
-            
-            let data;
-            const contentType = res.headers.get('content-type');
-            if (contentType && contentType.includes('application/json')) {
-                data = await res.json();
-            } else {
-                const text = await res.text();
-                console.error(`[API_CALL] Non-JSON response: ${text.substring(0, 200)}`);
-                throw new Error('Server returned non-JSON response');
-            }
-            
+
             if (res.status === 401) {
-                console.log('[API_CALL] Unauthorized, logging out...');
-                logout();
+                localStorage.removeItem("vms_admin_token");
+                localStorage.removeItem("vms_admin_user");
+                localStorage.removeItem("vms_admin_role");
+                alert("Session habis / token invalid. Login ulang.");
+                location.reload();
                 return null;
             }
-            
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error("API ERROR " + res.status);
+            }
+
+            const contentType = res.headers.get("content-type") || "";
+            if (!contentType.includes("application/json")) {
+                throw new Error("Server returned non-JSON response");
+            }
+
+            const data = await res.json();
             return data;
-            
+
         } catch (e) {
-            console.error(`[API_CALL] Network error for ${endpoint}:`, e);
-            showToast("Network error: " + e.message, "error");
+            console.error("[API CATCH]", e);
+            showToast(e.message || "Unknown error", "error");
             return null;
         }
     }
@@ -1141,70 +1133,72 @@
     async function doLogin() {
         const username = document.getElementById("loginUser").value.trim();
         const password = document.getElementById("loginPass").value;
-        
+
         if (!username || !password) {
             showToast("Username and password required", "error");
             return;
         }
-        
+
         showToast("Logging in...", "info");
-        
+
         try {
-            const data = await apiCall("/login", {
+            const res = await fetch(API_URL + "/login", {
                 method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
                 body: JSON.stringify({ username, password })
             });
-            
+
+            const data = await res.json();
+
             if (data && data.ok) {
-                token = data.token;
-                currentUser = { username: data.username, role: data.role };
-                
-                localStorage.setItem("vms_admin_token", token);
+                localStorage.setItem("vms_admin_token", data.token);
                 localStorage.setItem("vms_admin_user", data.username);
                 localStorage.setItem("vms_admin_role", data.role);
-                
-                const loginOverlay = document.getElementById("loginOverlay");
-                
-                if (loginOverlay) loginOverlay.classList.add("hidden");
-                
-                const topUsername = document.getElementById("topUsername");
-                const sidebarUsername = document.getElementById("sidebarUsername");
-                const topRole = document.getElementById("topRole");
-                const sidebarRole = document.getElementById("sidebarRole");
-                
-                if (topUsername) topUsername.innerText = data.username;
-                if (sidebarUsername) sidebarUsername.innerText = data.username;
-                if (topRole) topRole.innerText = data.role;
-                if (sidebarRole) sidebarRole.innerText = data.role;
-                
-                showToast(`Welcome ${data.username} (${data.role})`, "success");
-                
+
+                currentUser = { username: data.username, role: data.role };
+
+                document.getElementById("loginOverlay").classList.add("hidden");
+
+                document.getElementById("topUsername").innerText = data.username;
+                document.getElementById("sidebarUsername").innerText = data.username;
+                document.getElementById("topRole").innerText = data.role;
+                document.getElementById("sidebarRole").innerText = data.role;
+
+                showToast(`Welcome ${data.username}`, "success");
+
                 startRefresh();
                 loadAllData();
+
             } else {
-                showToast(data?.error || "Login failed - please check username/password", "error");
+                showToast(data?.error || "Login failed", "error");
             }
+
         } catch (err) {
-            console.error("[LOGIN] Exception:", err);
-            showToast("Login error: " + err.message, "error");
+            console.error("[LOGIN ERROR]", err);
+            showToast("Login error", "error");
         }
     }
 
     function logout() {
-        token = null;
         currentUser = null;
-        localStorage.removeItem("vms_admin_token");
-        localStorage.removeItem("vms_admin_user");
-        localStorage.removeItem("vms_admin_role");
-        
-        const loginOverlay = document.getElementById("loginOverlay");
-        
-        if (loginOverlay) loginOverlay.classList.remove("hidden");
-        
+
+        if (refreshInterval) {
+            clearInterval(refreshInterval);
+            refreshInterval = null;
+        }
+
+        localStorage.clear();
+
+        document.getElementById("loginOverlay").classList.remove("hidden");
+
         showToast("Logged out", "info");
     }
 
     async function loadAllData() {
+        if (!localStorage.getItem("vms_admin_token")) return;
+
         if (syncLock) return;
         syncLock = true;
         
@@ -1219,7 +1213,7 @@
                 loadDeviceRequests()
             ]);
         } finally {
-            setTimeout(() => { syncLock = false; }, 1000);
+            syncLock = false;
         }
     }
 
@@ -1284,35 +1278,61 @@
     function renderCompaniesTable() {
         const tbody = document.querySelector("#companiesTable tbody");
         if (!tbody) return;
-        
+
         const search = document.getElementById("companySearch")?.value.toLowerCase() || "";
-        const filtered = companiesData.filter(c => c.companyName.toLowerCase().includes(search));
-        
+
+        if (!Array.isArray(companiesData)) return;
+        const filtered = companiesData.filter(c =>
+            (c.companyName || "").toLowerCase().includes(search)
+        );
+
         tbody.innerHTML = "";
-        
+
         for (const company of filtered) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
+
             const isExpired = company.expiredAt < Date.now();
-            const packageClass = company.package === 'PRO' ? 'badge-pro' : (company.package === 'BASIC' ? 'badge-basic' : 'badge-demo');
-            
+            const packageClass =
+                company.package === "PRO"
+                    ? "badge-pro"
+                    : company.package === "BASIC"
+                    ? "badge-basic"
+                    : "badge-demo";
+
             row.innerHTML = `
                 <td>
                     <strong>${escapeHtml(company.companyName)}</strong><br>
-                    <small class="text-muted">${escapeHtml(company.pic || '-')}</small>
+                    <small class="text-muted">${escapeHtml(company.pic || "-")}</small>
                 </td>
-                <td><code class="code">${company.licenseKey}</code></span></td>
-                <td><span class="badge ${packageClass}">${company.package}</span></span></td>
-                <td>${company.currentDevices || 0} / ${company.maxDevices}</span></td>
-                <td>${company.maxDevices}</span></td>
-                <td class="${isExpired ? 'text-danger' : ''}">${formatDate(company.expiredAt)}</span></td>
-                <td><span class="badge ${isExpired ? 'badge-expired' : 'badge-active'}">${isExpired ? 'EXPIRED' : (company.status || 'ACTIVE')}</span></span></td>
+                <td>
+                    <code class="code">${escapeHtml(company.licenseKey)}</code>
+                </td>
+                <td>
+                    <span class="badge ${packageClass}">
+                        ${escapeHtml(company.package)}
+                    </span>
+                </td>
+                <td>
+                    ${company.currentDevices || 0} / ${company.maxDevices}
+                </td>
+                <td>${company.maxDevices}</td>
+                <td class="${isExpired ? "text-danger" : ""}">
+                    ${formatDate(company.expiredAt)}
+                </td>
+                <td>
+                    <span class="badge ${isExpired ? "badge-expired" : "badge-active"}">
+                        ${isExpired ? "EXPIRED" : (company.status || "ACTIVE")}
+                    </span>
+                </td>
                 <td>
                     <button class="btn btn-info btn-sm" onclick="viewCompanyDetails('${company.id}')">Detail</button>
                     <button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button>
                     <button class="btn btn-primary btn-sm" onclick="openUpgradeModal('${company.id}', '${escapeHtml(company.companyName)}', '${company.package}')">Upgrade</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteCompany('${company.id}')">Delete</button>
-                </span>
+                </td>
             `;
+
+            tbody.appendChild(row);
         }
     }
 
@@ -1320,6 +1340,7 @@
         const tbody = document.querySelector("#expiringTable tbody");
         if (!tbody) return;
         
+        if (!Array.isArray(companiesData)) return;
         const now = Date.now();
         const expiringSoon = companiesData
             .filter(c => c.expiredAt < now + 7 * 86400000)
@@ -1329,16 +1350,17 @@
         tbody.innerHTML = "";
         
         for (const company of expiringSoon) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             const isExpired = company.expiredAt < now;
             row.innerHTML = `
                 <td><strong>${escapeHtml(company.companyName)}</strong></td>
-                <td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${company.package}</span></span></td>
-                <td class="${isExpired ? 'text-danger' : 'text-warning'}">${formatDate(company.expiredAt)}</span></td>
-                <td>${company.currentDevices || 0}</span></td>
-                <td><span class="badge ${isExpired ? 'badge-expired' : 'badge-warning'}">${isExpired ? 'EXPIRED' : 'Expiring Soon'}</span></span></td>
-                <td><button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button></span></td>
+                <td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(company.package)}</span></td>
+                <td class="${isExpired ? 'text-danger' : 'text-warning'}">${formatDate(company.expiredAt)}</td>
+                <td>${company.currentDevices || 0}</td>
+                <td><span class="badge ${isExpired ? 'badge-expired' : 'badge-warning'}">${isExpired ? 'EXPIRED' : 'Expiring Soon'}</span></td>
+                <td><button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button></td>
             `;
+            tbody.appendChild(row);
         }
     }
 
@@ -1354,39 +1376,43 @@
     function renderDevicesTable() {
         const tbody = document.querySelector("#devicesTable tbody");
         if (!tbody) return;
-        
+
         const search = document.getElementById("deviceSearch")?.value.toLowerCase() || "";
         const statusFilter = document.getElementById("deviceStatusFilter")?.value || "";
-        
-        const filtered = devicesData.filter(d => 
-            (d.deviceId.toLowerCase().includes(search) || 
-             (d.companyName || "").toLowerCase().includes(search) ||
-             (d.deviceName || "").toLowerCase().includes(search)) &&
+
+        if (!Array.isArray(devicesData)) return;
+        const filtered = devicesData.filter(d =>
+            ((d.deviceId || "").toLowerCase().includes(search) ||
+            (d.companyName || "").toLowerCase().includes(search) ||
+            (d.deviceName || "").toLowerCase().includes(search)) &&
             (statusFilter === "" || d.status === statusFilter)
         );
-        
+
         tbody.innerHTML = "";
-        
+
         for (const device of filtered) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
+
             let statusClass = "badge-active";
             if (device.status === "PENDING_APPROVAL") statusClass = "badge-pending";
             if (device.status === "SUSPENDED") statusClass = "badge-suspended";
             if (device.status === "BANNED") statusClass = "badge-banned";
-            
+
             row.innerHTML = `
-                <td><code class="code">${device.deviceId.substring(0, 16)}...</code></td>
-                <td>${escapeHtml(device.deviceName || '-')}</span></td>
-                <td><strong>${escapeHtml(device.companyName || '-')}</strong></span></td>
-                <td><code class="code">${device.licenseKey?.substring(0, 20) || '-'}</code></span></td>
-                <td><span class="badge ${statusClass}">${device.status || 'UNKNOWN'}</span></span></td>
-                <td>${formatDateTime(device.lastSeen)}</span></td>
-                <td>${device.violations?.length || 0}</span></td>
+                <td><code class="code">${escapeHtml(device.deviceId || "-")}</code></td>
+                <td>${escapeHtml(device.deviceName || "-")}</td>
+                <td><strong>${escapeHtml(device.companyName || "-")}</strong></td>
+                <td><code class="code">${escapeHtml(device.licenseKey || "-")}</code></td>
+                <td><span class="badge ${statusClass}">${escapeHtml(device.status)}</span></td>
+                <td>${formatDateTime(device.lastSeen)}</td>
+                <td>${device.violations?.length || 0}</td>
                 <td>
                     <button class="btn btn-info btn-sm" onclick="viewDeviceDetails('${device.deviceId}')">Detail</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteDevice('${device.deviceId}')">Delete</button>
-                  </span>
+                </td>
             `;
+
+            tbody.appendChild(row);
         }
     }
 
@@ -1406,6 +1432,7 @@
         const search = document.getElementById("violationSearch")?.value.toLowerCase() || "";
         const typeFilter = document.getElementById("violationTypeFilter")?.value || "";
         
+        if (!Array.isArray(activityData)) return;
         const violations = activityData
             .filter(a => a.type === "VIOLATION_REPORTED")
             .filter(v => (v.companyName || "").toLowerCase().includes(search) || (v.deviceId || "").toLowerCase().includes(search))
@@ -1415,15 +1442,16 @@
         tbody.innerHTML = "";
         
         for (const v of violations) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             row.innerHTML = `
                 <td><strong>${escapeHtml(v.companyName || '-')}</strong></td>
-                <td><code class="code">${v.deviceId?.substring(0, 12)}...</code></td>
-                <td><span class="badge badge-danger">${v.violationType || 'Unknown'}</span></td>
+                <td><code class="code">${v.deviceId ? escapeHtml(v.deviceId.substring(0, 12)) : '-'}...</code></td>
+                <td><span class="badge badge-danger">${escapeHtml(v.violationType || 'Unknown')}</span></td>
                 <td>${escapeHtml(v.details || '-')}</td>
-                <td>${formatDateTime(v.timestamp)}</span></td>
+                <td>${formatDateTime(v.timestamp)}</td>
                 <td><button class="btn btn-warning btn-sm" onclick="viewViolationDetails('${v.id}')">View</button></td>
             `;
+            tbody.appendChild(row);
         }
     }
 
@@ -1431,43 +1459,48 @@
         const tbody = document.querySelector("#recentViolationsTable tbody");
         if (!tbody) return;
         
+        if (!Array.isArray(activityData)) return;
         const violations = activityData.filter(a => a.type === "VIOLATION_REPORTED").slice(0, 20);
         
         tbody.innerHTML = "";
         
         for (const v of violations) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             row.innerHTML = `
                 <td><strong>${escapeHtml(v.companyName || '-')}</strong></td>
-                <td><code class="code">${v.deviceId?.substring(0, 12)}...</code></td>
-                <td><span class="badge badge-danger">${v.violationType || 'Unknown'}</span></td>
-                <td>${formatDateTime(v.timestamp)}</span></td>
+                <td><code class="code">${v.deviceId ? escapeHtml(v.deviceId.substring(0, 12)) : '-'}...</code></td>
+                <td><span class="badge badge-danger">${escapeHtml(v.violationType || 'Unknown')}</span></td>
+                <td>${formatDateTime(v.timestamp)}</td>
                 <td><span class="badge badge-warning">Reported</span></td>
             `;
+            tbody.appendChild(row);
         }
     }
 
     function renderPendingRequests() {
+        if (!Array.isArray(devicesData)) return;
         const pending = devicesData.filter(d => d.status === "PENDING_APPROVAL");
         const tbody = document.querySelector("#requestsTable tbody");
         if (!tbody) return;
         
-        document.getElementById("pendingCount").innerText = pending.length;
+        const pendingCountSpan = document.getElementById("pendingCount");
+        if (pendingCountSpan) pendingCountSpan.innerText = pending.length;
         
         tbody.innerHTML = "";
         
         for (const device of pending) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             row.innerHTML = `
                 <td><strong>${escapeHtml(device.companyName || '-')}</strong></td>
-                <td><code class="code">${device.deviceId.substring(0, 16)}...</code></td>
+                <td><code class="code">${device.deviceId ? escapeHtml(device.deviceId.substring(0, 16)) : '-'}...</code></td>
                 <td>${escapeHtml(device.deviceName || '-')}</td>
-                <td>${formatDateTime(device.approvalRequest?.requestedAt || device.firstSeen)}</span></td>
+                <td>${formatDateTime(device.approvalRequest?.requestedAt || device.firstSeen)}</td>
                 <td>
-                    <button class="btn btn-success btn-sm" onclick="approveDeviceRequest('${device.deviceId}', true)">✅ Approve</button>
-                    <button class="btn btn-danger btn-sm" onclick="approveDeviceRequest('${device.deviceId}', false)">❌ Reject</button>
-                  </span>
+                    <button class="btn btn-success btn-sm" onclick="approveDeviceRequest('${escapeHtml(device.deviceId)}', true)">✅ Approve</button>
+                    <button class="btn btn-danger btn-sm" onclick="approveDeviceRequest('${escapeHtml(device.deviceId)}', false)">❌ Reject</button>
+                </td>
             `;
+            tbody.appendChild(row);
         }
     }
 
@@ -1484,45 +1517,51 @@
         if (!tbody) return;
         
         const statusFilter = document.getElementById("invoiceStatusFilter")?.value || "";
+        
+        if (!Array.isArray(invoicesData)) return;
         const filtered = invoicesData.filter(i => statusFilter === "" || i.status === statusFilter);
         
         tbody.innerHTML = "";
         
         for (const inv of filtered.slice(0, 100)) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             row.innerHTML = `
-                <td><code class="code">${inv.id}</code></td>
+                <td><code class="code">${escapeHtml(inv.id)}</code></td>
                 <td><strong>${escapeHtml(inv.companyName)}</strong></td>
-                <td>${formatCurrency(inv.amount)}</span></td>
-                <td>${inv.months} month(s)</span></td>
-                <td><span class="badge ${inv.status === 'PAID' ? 'badge-active' : 'badge-pending'}">${inv.status}</span></span></td>
-                <td>${formatDate(inv.createdAt)}</span></td>
+                <td>${formatCurrency(inv.amount)}</td>
+                <td>${inv.months} month(s)</td>
+                <td><span class="badge ${inv.status === 'PAID' ? 'badge-active' : 'badge-pending'}">${escapeHtml(inv.status)}</span></td>
+                <td>${formatDate(inv.createdAt)}</td>
                 <td>
                     ${inv.status === 'UNPAID' ? `<button class="btn btn-success btn-sm" onclick="markInvoicePaid('${inv.id}')">Mark Paid</button>` : '-'}
-                  </span>
+                </td>
             `;
+            tbody.appendChild(row);
         }
     }
 
     async function loadRecentLicenses() {
+        if (!Array.isArray(companiesData)) return;
         const recent = [...companiesData].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
         renderRecentLicensesTable(recent);
     }
 
-    function renderRecentLicensesTable(recent = companiesData.slice(0, 10)) {
+    function renderRecentLicensesTable(recent = []) {
         const tbody = document.getElementById("recentLicensesBody");
         if (!tbody) return;
         
+        if (!Array.isArray(recent)) recent = [];
         tbody.innerHTML = "";
         
         for (const company of recent.slice(0, 10)) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             row.innerHTML = `
-                <td>${escapeHtml(company.companyName)}</span></td>
-                <td><code class="code">${company.licenseKey}</code></span></td>
-                <td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${company.package}</span></span></td>
-                <td>${formatDate(company.createdAt)}</span></td>
+                <td>${escapeHtml(company.companyName)}</td>
+                <td><code class="code">${escapeHtml(company.licenseKey)}</code></td>
+                <td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(company.package)}</span></td>
+                <td>${formatDate(company.createdAt)}</td>
             `;
+            tbody.appendChild(row);
         }
     }
 
@@ -1603,35 +1642,40 @@
         }
     }
 
-    // 🔥 PATCH: SAFE DELETE COMPANY (FIXED)
     async function deleteCompany(companyId) {
-        const confirmText = prompt("⚠️ PERINGATAN! Ketik DELETE untuk hapus company ini permanen\n\nSemua data termasuk device, visitor, log akan hilang.");
-        
-        if (confirmText !== "DELETE") {
-            showToast("Dibatalkan", "warning");
-            return;
-        }
-        
-        const confirmFinal = confirm("🔴 KONFIRMASI AKHIR: Semua data company akan dihapus PERMANEN. Lanjutkan?");
-        if (!confirmFinal) return;
-        
-        showToast("Menghapus company...", "info");
+        if (!confirm("Delete this company and all its devices? This action cannot be undone.")) return;
         
         const data = await apiCall("/delete-company", {
             method: "POST",
-            body: JSON.stringify({
-                companyId,
-                confirm: "DELETE_PERMANENT"
-            })
+            body: JSON.stringify({ companyId, reason: "Deleted by admin" })
         });
         
         if (data && data.ok) {
-            showToast(`✅ Company deleted permanently (mode: ${data.mode})`, "success");
+            showToast("Company deleted", "success");
             loadCompanies();
             loadDevices();
-            loadStats();
-        } else {
-            showToast(data?.error || "Delete failed", "error");
+        }
+    }
+
+    async function resetSystem() {
+        const confirm1 = confirm("⚠️ WARNING: Ini akan MENGHAPUS SEMUA DATA.\nLanjut?");
+        if (!confirm1) return;
+
+        const confirm2 = prompt("Ketik 'RESET TOTAL' untuk konfirmasi:");
+        if (confirm2 !== "RESET TOTAL") {
+            showToast("Dibatalkan", "warning");
+            return;
+        }
+
+        showToast("Reset system...", "warning");
+
+        const res = await apiCall("/admin/reset-system", {
+            method: "POST"
+        });
+
+        if (res && res.ok) {
+            showToast("🔥 SYSTEM RESET BERHASIL", "success");
+            setTimeout(() => location.reload(), 1500);
         }
     }
 
@@ -1722,11 +1766,11 @@
             content.innerHTML = `
                 <div class="grid-2" style="gap: 16px;">
                     <div><strong>Company Name:</strong><br>${escapeHtml(data.companyName)}</div>
-                    <div><strong>License Key:</strong><br><code>${data.licenseKey}</code></div>
+                    <div><strong>License Key:</strong><br><code>${escapeHtml(data.licenseKey)}</code></div>
                     <div><strong>PIC:</strong><br>${escapeHtml(data.pic)}</div>
                     <div><strong>Phone:</strong><br>${escapeHtml(data.phone)}</div>
                     <div><strong>Email:</strong><br>${escapeHtml(data.email)}</div>
-                    <div><strong>Package:</strong><br><span class="badge ${data.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${data.package}</span></div>
+                    <div><strong>Package:</strong><br><span class="badge ${data.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(data.package)}</span></div>
                     <div><strong>Devices:</strong><br>${data.stats?.totalDevices || 0} / ${data.maxDevices}</div>
                     <div><strong>Expiry:</strong><br class="${data.expiredAt < Date.now() ? 'text-danger' : ''}">${formatDate(data.expiredAt)}</div>
                     <div><strong>Status:</strong><br><span class="badge ${data.expiredAt < Date.now() ? 'badge-expired' : 'badge-active'}">${data.expiredAt < Date.now() ? 'EXPIRED' : 'ACTIVE'}</span></div>
@@ -1740,12 +1784,12 @@
                         <tbody>
                             ${(data.devices || []).map(d => `
                                 <tr>
-                                    <td><code>${d.deviceId.substring(0, 12)}...</code></td>
-                                    <td>${escapeHtml(d.deviceName || '-')}</span></td>
-                                    <td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${d.status}</span></span></span></td>
-                                    <td>${formatDateTime(d.lastSeen)}</span></td>
+                                    <td><code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td>
+                                    <td>${escapeHtml(d.deviceName || '-')}</td>
+                                    <td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td>
+                                    <td>${formatDateTime(d.lastSeen)}</td>
                                 </tr>
-                            `).join('') || '<td><td colspan="4" class="text-muted">No devices</span></tr>'}
+                            `).join('') || '<tr><td colspan="4" class="text-muted">No devices</td></tr>'}
                         </tbody>
                     </table>
                 </div>
@@ -1761,11 +1805,11 @@
         const content = document.getElementById("deviceDetailContent");
         content.innerHTML = `
             <div class="grid-2" style="gap: 16px;">
-                <div><strong>Device ID:</strong><br><code>${device.deviceId}</code></div>
+                <div><strong>Device ID:</strong><br><code>${escapeHtml(device.deviceId)}</code></div>
                 <div><strong>Device Name:</strong><br>${escapeHtml(device.deviceName || '-')}</div>
                 <div><strong>Company:</strong><br>${escapeHtml(device.companyName)}</div>
-                <div><strong>License Key:</strong><br><code>${device.licenseKey}</code></div>
-                <div><strong>Status:</strong><br><span class="badge ${device.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${device.status}</span></div>
+                <div><strong>License Key:</strong><br><code>${escapeHtml(device.licenseKey)}</code></div>
+                <div><strong>Status:</strong><br><span class="badge ${device.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(device.status)}</span></div>
                 <div><strong>First Seen:</strong><br>${formatDateTime(device.firstSeen)}</div>
                 <div><strong>Last Seen:</strong><br>${formatDateTime(device.lastSeen)}</div>
                 <div><strong>Violations:</strong><br>${device.violations?.length || 0}</div>
@@ -1778,9 +1822,9 @@
                     <tbody>
                         ${(device.violations || []).slice(0, 10).map(v => `
                             <tr>
-                                <td><span class="badge badge-danger">${v.violationType}</span></span></td>
-                                <td>${escapeHtml(v.details || '-')}</span></td>
-                                <td>${formatDateTime(v.timestamp)}</span></span></td>
+                                <td><span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td>
+                                <td>${escapeHtml(v.details || '-')}</td>
+                                <td>${formatDateTime(v.timestamp)}</td>
                             </tr>
                         `).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}
                     </tbody>
@@ -1821,9 +1865,9 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);">
                     <div>
                         <strong>${escapeHtml(u.username)}</strong><br>
-                        <small class="text-muted">${u.role}</small>
+                        <small class="text-muted">${escapeHtml(u.role)}</small>
                     </div>
-                    ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${u.username}')">Delete</button>` : '<span class="text-muted">Default</span>'}
+                    ${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${escapeHtml(u.username)}')">Delete</button>` : '<span class="text-muted">Default</span>'}
                 </div>
             `).join('');
         }
@@ -1900,6 +1944,7 @@
     }
 
     function exportCompaniesToExcel() {
+        if (!Array.isArray(companiesData)) return;
         const wsData = companiesData.map(c => ({
             "Company Name": c.companyName,
             "License Key": c.licenseKey,
@@ -1921,6 +1966,7 @@
     }
 
     function exportDevicesToExcel() {
+        if (!Array.isArray(devicesData)) return;
         const wsData = devicesData.map(d => ({
             "Device ID": d.deviceId,
             "Device Name": d.deviceName,
@@ -1939,6 +1985,7 @@
     }
 
     function exportInvoicesToExcel() {
+        if (!Array.isArray(invoicesData)) return;
         const wsData = invoicesData.map(i => ({
             "Invoice #": i.id,
             "Company": i.companyName,
@@ -1960,37 +2007,9 @@
         showToast("Violations cleared", "success");
     }
 
-    // 💣 PATCH: RESET GOD MODE (FIXED)
-    async function resetSystem() {
-        const confirmText = prompt("💣 PERINGATAN BERAT! Ketik RESET_GOD_MODE untuk wipe SEMUA DATA SYSTEM\n\nIni akan menghapus: semua company, device, visitor, log, invoice, violation.\nAdmin dan settings TIDAK akan terhapus.");
-        
-        if (confirmText !== "RESET_GOD_MODE") {
-            showToast("Reset dibatalkan - kode salah", "warning");
-            return;
-        }
-        
-        const confirmFinal = confirm("🔴🔴🔴 KONFIRMASI AKHIR: INI AKAN MENGHAPUS SEMUA DATA COMPANY! Yakin? 🔴🔴🔴");
-        if (!confirmFinal) return;
-        
-        showToast("Memproses reset system...", "info");
-        
-        const data = await apiCall("/admin/reset-system", {
-            method: "POST",
-            body: JSON.stringify({
-                confirm: "RESET_GOD_MODE"
-            })
-        });
-        
-        if (data && data.ok) {
-            showToast(`💣 SYSTEM RESET TOTAL! ${data.wipedCompanies} companies wiped. Refresh halaman...`, "success");
-            setTimeout(() => location.reload(), 2000);
-        } else {
-            showToast(data?.error || "Reset gagal", "error");
-        }
-    }
-
     function openGenerateLicenseModal() {
-        document.querySelector('.nav-item[data-tab="license"]').click();
+        const licenseNav = document.querySelector('.nav-item[data-tab="license"]');
+        if (licenseNav) licenseNav.click();
     }
 
     function refreshData() {
@@ -1999,7 +2018,8 @@
     }
 
     function closeModal(modalId) {
-        document.getElementById(modalId).classList.remove("active");
+        const modal = document.getElementById(modalId);
+        if (modal) modal.classList.remove("active");
     }
 
     async function loadDeviceRequests() {
@@ -2015,10 +2035,11 @@
         const tbody = document.querySelector("#deviceRequestsTable tbody");
         if (!tbody) return;
         
+        if (!Array.isArray(requests)) return;
         tbody.innerHTML = "";
         
         for (const req of requests) {
-            const row = tbody.insertRow();
+            const row = document.createElement("tr");
             let statusClass = "badge-pending";
             if (req.status === "WAITING_PAYMENT") statusClass = "badge-warning";
             if (req.status === "PAID") statusClass = "badge-active";
@@ -2026,10 +2047,10 @@
             
             row.innerHTML = `
                 <td><strong>${escapeHtml(req.companyName)}</strong></td>
-                <td>${escapeHtml(req.deviceName)}</span></td>
-                <td>Rp ${(req.fee || 0).toLocaleString()}</span></td>
-                <td><span class="badge ${statusClass}">${req.status}</span></span></td>
-                <td>${formatDate(req.requestedAt)}</span></td>
+                <td>${escapeHtml(req.deviceName)}</td>
+                <td>Rp ${(req.fee || 0).toLocaleString()}</td>
+                <td><span class="badge ${statusClass}">${escapeHtml(req.status)}</span></td>
+                <td>${formatDate(req.requestedAt)}</td>
                 <td>
                     ${req.status === "PENDING" ? `
                         <button class="btn btn-success btn-sm" onclick="approveDeviceRequestFee('${req.id}')">✅ Approve & Invoice</button>
@@ -2039,8 +2060,9 @@
                     ` : (req.status === "PAID" ? `
                         <span class="text-success">Device activated</span>
                     ` : "-"))}
-                </span>
+                </td>
             `;
+            tbody.appendChild(row);
         }
     }
 
@@ -2078,16 +2100,19 @@
 
     function switchTab(tabId) {
         document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.remove("active"));
-        document.getElementById(`${tabId}Tab`).classList.add("active");
+        const targetTab = document.getElementById(`${tabId}Tab`);
+        if (targetTab) targetTab.classList.add("active");
         document.querySelectorAll(".nav-item").forEach(nav => nav.classList.remove("active"));
-        document.querySelector(`.nav-item[data-tab="${tabId}"]`).classList.add("active");
+        const activeNav = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+        if (activeNav) activeNav.classList.add("active");
         
         const titles = {
             dashboard: "Dashboard", companies: "Companies", devices: "Devices",
             violations: "Violations", requests: "Pending Approvals", license: "Generate License",
             invoices: "Invoices", settings: "Settings", devicerequests: "Device Requests"
         };
-        document.getElementById("pageTitle").innerText = titles[tabId] || "Dashboard";
+        const pageTitle = document.getElementById("pageTitle");
+        if (pageTitle) pageTitle.innerText = titles[tabId] || "Dashboard";
         
         if (tabId === "devices") loadDevices();
         if (tabId === "violations") loadActivity();
@@ -2102,25 +2127,39 @@
             const tab = nav.dataset.tab;
             if (tab) switchTab(tab);
             if (window.innerWidth <= 768) {
-                document.getElementById("sidebar").classList.remove("open");
+                const sidebar = document.getElementById("sidebar");
+                if (sidebar) sidebar.classList.remove("open");
             }
         });
     });
 
-    document.getElementById("mobileMenuBtn")?.addEventListener("click", () => {
-        document.getElementById("sidebar").classList.toggle("open");
-    });
+    const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener("click", () => {
+            const sidebar = document.getElementById("sidebar");
+            if (sidebar) sidebar.classList.toggle("open");
+        });
+    }
 
-    document.getElementById("topLogoutBtn")?.addEventListener("click", logout);
-    document.getElementById("sidebarLogoutBtn")?.addEventListener("click", logout);
+    const topLogoutBtn = document.getElementById("topLogoutBtn");
+    if (topLogoutBtn) topLogoutBtn.addEventListener("click", logout);
+    const sidebarLogoutBtn = document.getElementById("sidebarLogoutBtn");
+    if (sidebarLogoutBtn) sidebarLogoutBtn.addEventListener("click", logout);
     
-    document.getElementById("companySearch")?.addEventListener("input", () => renderCompaniesTable());
-    document.getElementById("deviceSearch")?.addEventListener("input", () => renderDevicesTable());
-    document.getElementById("deviceStatusFilter")?.addEventListener("change", () => renderDevicesTable());
-    document.getElementById("violationSearch")?.addEventListener("input", () => renderViolationsTable());
-    document.getElementById("violationTypeFilter")?.addEventListener("change", () => renderViolationsTable());
-    document.getElementById("invoiceStatusFilter")?.addEventListener("change", () => renderInvoicesTable());
-    document.getElementById("requestStatusFilter")?.addEventListener("change", () => loadDeviceRequests());
+    const companySearch = document.getElementById("companySearch");
+    if (companySearch) companySearch.addEventListener("input", () => renderCompaniesTable());
+    const deviceSearch = document.getElementById("deviceSearch");
+    if (deviceSearch) deviceSearch.addEventListener("input", () => renderDevicesTable());
+    const deviceStatusFilter = document.getElementById("deviceStatusFilter");
+    if (deviceStatusFilter) deviceStatusFilter.addEventListener("change", () => renderDevicesTable());
+    const violationSearch = document.getElementById("violationSearch");
+    if (violationSearch) violationSearch.addEventListener("input", () => renderViolationsTable());
+    const violationTypeFilter = document.getElementById("violationTypeFilter");
+    if (violationTypeFilter) violationTypeFilter.addEventListener("change", () => renderViolationsTable());
+    const invoiceStatusFilter = document.getElementById("invoiceStatusFilter");
+    if (invoiceStatusFilter) invoiceStatusFilter.addEventListener("change", () => renderInvoicesTable());
+    const requestStatusFilter = document.getElementById("requestStatusFilter");
+    if (requestStatusFilter) requestStatusFilter.addEventListener("change", () => loadDeviceRequests());
 
     function startRefresh() {
         if (refreshInterval) clearInterval(refreshInterval);
@@ -2133,158 +2172,31 @@
         const savedRole = localStorage.getItem("vms_admin_role");
         
         if (savedToken && savedUser) {
-            token = savedToken;
             currentUser = { username: savedUser, role: savedRole || "ADMIN" };
-            document.getElementById("loginOverlay").classList.add("hidden");
-            document.getElementById("topUsername").innerText = savedUser;
-            document.getElementById("sidebarUsername").innerText = savedUser;
-            document.getElementById("topRole").innerText = savedRole || "ADMIN";
-            document.getElementById("sidebarRole").innerText = savedRole || "ADMIN";
+            const loginOverlay = document.getElementById("loginOverlay");
+            if (loginOverlay) loginOverlay.classList.add("hidden");
+            const topUsername = document.getElementById("topUsername");
+            if (topUsername) topUsername.innerText = savedUser;
+            const sidebarUsername = document.getElementById("sidebarUsername");
+            if (sidebarUsername) sidebarUsername.innerText = savedUser;
+            const topRole = document.getElementById("topRole");
+            if (topRole) topRole.innerText = savedRole || "ADMIN";
+            const sidebarRole = document.getElementById("sidebarRole");
+            if (sidebarRole) sidebarRole.innerText = savedRole || "ADMIN";
             startRefresh();
             loadAllData();
         } else {
-            document.getElementById("loginOverlay").classList.remove("hidden");
+            const loginOverlay = document.getElementById("loginOverlay");
+            if (loginOverlay) loginOverlay.classList.remove("hidden");
         }
         
         setInterval(() => {
-            document.getElementById("serverTime").innerHTML = `Server Time: ${new Date().toLocaleString()}`;
+            const serverTimeSpan = document.getElementById("serverTime");
+            if (serverTimeSpan) serverTimeSpan.innerHTML = `Server Time: ${new Date().toLocaleString()}`;
         }, 1000);
     }
 
     init();
-</script>
-<script>
-// ============================================================
-// 🧠⚙️👑 VMS HARDENING INJECTION PACK v1.0 (SAFE MODE)
-// ============================================================
-
-(function(){
-
-console.log("[VMS HARDENING] INIT...");
-
-// ============================================================
-// 🔐 1. API CALL HARDEN (NO BREAK CORE)
-// ============================================================
-
-if (window.apiCall) {
-    const __old_apiCall = window.apiCall;
-
-    window.apiCall = async function(endpoint, options = {}) {
-        if (!navigator.onLine) {
-            console.warn("[API] Offline mode");
-            return null;
-        }
-
-        try {
-            return await __old_apiCall(endpoint, options);
-        } catch (e) {
-            console.error("[API ERROR]", endpoint, e);
-            return null;
-        }
-    };
-
-    console.log("[VMS] API HARDENED");
-}
-
-// ============================================================
-// 📱 2. DEVICE SYNC HARDEN (SERVER SOURCE OF TRUTH)
-// ============================================================
-
-if (window.loadDevices) {
-    const __old_loadDevices = window.loadDevices;
-
-    window.loadDevices = async function () {
-        try {
-            const licenseKey = localStorage.getItem("vms_license_key");
-            if (!licenseKey) return __old_loadDevices();
-
-            const res = await fetch(API_URL + "/client/devices", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ licenseKey })
-            });
-
-            if (!res.ok) throw new Error("Server error");
-
-            const data = await res.json();
-
-            if (data.devices && data.devices.length > 0) {
-                if (typeof devicesData !== "undefined") {
-                    devicesData = data.devices;
-                }
-
-                localStorage.setItem("vms_devices", JSON.stringify(data.devices));
-
-                if (typeof renderDevicesList === "function") renderDevicesList();
-                if (typeof updateDeviceSelects === "function") updateDeviceSelects();
-                if (typeof updateStats === "function") updateStats();
-
-                console.log("[VMS] DEVICE SYNC FROM SERVER");
-
-                return;
-            }
-
-        } catch (e) {
-            console.warn("[SYNC FALLBACK LOCAL]", e.message);
-        }
-
-        return __old_loadDevices();
-    };
-
-    console.log("[VMS] DEVICE SYNC HARDENED");
-}
-
-// ============================================================
-// 🔁 3. SYNC LOCK HARDEN (ANTI SPAM)
-// ============================================================
-
-if (window.syncToCloud) {
-    const __old_sync = window.syncToCloud;
-
-    window.syncToCloud = async function(payload){
-        if (window.__sync_lock) {
-            console.warn("[SYNC BLOCKED]");
-            return;
-        }
-
-        window.__sync_lock = true;
-
-        try {
-            return await __old_sync(payload);
-        } catch(e){
-            console.warn("[SYNC ERROR]", e);
-        } finally {
-            setTimeout(()=>{
-                window.__sync_lock = false;
-            }, 1000);
-        }
-    };
-
-    console.log("[VMS] SYNC LOCK ACTIVE");
-}
-
-// ============================================================
-// 🌐 4. SAFE FETCH (GLOBAL FALLBACK)
-// ============================================================
-
-window.safeFetch = async function(url, options = {}) {
-    try {
-        const res = await fetch(url, options);
-        if (!res.ok) throw new Error(res.status);
-        return await res.json();
-    } catch (e) {
-        console.warn("[SAFE FETCH ERROR]", url, e.message);
-        return null;
-    }
-};
-
-// ============================================================
-// 📡 5. AUTO HEALTH LOG
-// ============================================================
-
-console.log("[VMS HARDENING] READY ✅");
-
-})();
 </script>
 </body>
 </html>
