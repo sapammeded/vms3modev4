@@ -1040,8 +1040,8 @@ window.onunhandledrejection = function(e) {
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
 
-        // 🔥 paksa buka di browser luar
-        window.open(url, "_blank");
+        // 🔥 INI YANG PALING WORK DI WEBVIEW
+        window.location.href = url;
 
         return true;
 
@@ -1050,7 +1050,6 @@ window.onunhandledrejection = function(e) {
         return false;
     }
 }
-
     async function downloadPDFStable(reg, data){
         try{
             const ready = await ensureJsPDFReady();
