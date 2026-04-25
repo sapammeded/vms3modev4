@@ -1022,36 +1022,31 @@ window.onunhandledrejection = function(e) {
     });
 }
 
-    function forceDownloadPDF(doc, filename){
+    async function forceDownloadPDF(doc, filename){
     try{
-        const base64 = doc.output('datauristring');
+        const base64 = doc.output('datauristring').split(',')[1];
 
-        const newWindow = window.open();
+        const res = await fetch("https://vms3modev4.sapammeded.workers.dev/download-pdf", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                file: base64,
+                name: filename
+            })
+        });
 
-        if (!newWindow) {
-            // fallback kalau popup diblock
-            window.location.href = base64;
-            return true;
-        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
 
-        newWindow.document.open();
-        newWindow.document.write(`
-            <html>
-            <head>
-                <title>${filename}</title>
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            </head>
-            <body style="margin:0;background:#000;">
-                <embed src="${base64}" type="application/pdf" width="100%" height="100%" />
-            </body>
-            </html>
-        `);
-        newWindow.document.close();
+        // 🔥 paksa buka di browser luar
+        window.open(url, "_blank");
 
         return true;
 
     }catch(err){
-        console.error("ERROR:", err);
+        console.error("DOWNLOAD ERROR:", err);
         return false;
     }
 }
