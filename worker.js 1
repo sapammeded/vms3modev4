@@ -1,4 +1,4 @@
-// ==================== VMS WORKER v3.0 - FINAL HARDENING ====================
+// ==================== VMS WORKER v3.0 - AUTH INTEGRITY & SAFETY ====================
 // Cloudflare Worker untuk VMS SAPAM MEDED
 // FIX: Single write, memory cache, no random login fail
 
@@ -40,7 +40,7 @@ if (!globalThis.__session_cache) {
     globalThis.__session_cache = {};
 }
 
-// ==================== FIX 2: GLOBAL RESET LOCK ====================
+// ==================== GLOBAL RESET LOCK ====================
 if (globalThis.__reset_lock === undefined) {
     globalThis.__reset_lock = false;
 }
@@ -102,11 +102,9 @@ export default {
             
             // ==================== LOGIN FIX - SINGLE WRITE + CACHE ====================
             if (path === '/login' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { username, password } = body;
                 
-                // FIX 7: Log throttle (10% sampling)
                 if (Math.random() < 0.1) console.log(`[LOGIN] Attempt for username: ${username}`);
                 
                 let admins = await safeArray(env, 'admins');
@@ -134,12 +132,7 @@ export default {
                     if (Math.random() < 0.1) console.log(`[LOGIN] Plain text match, upgrading to hash...`);
                     isValid = true;
                     admins[index].password = hashedInputPassword;
-                }
-                
-                if (!isValid && username === 'admin' && password === '123456') {
-                    if (Math.random() < 0.1) console.log(`[LOGIN] Using default admin fallback`);
-                    isValid = true;
-                    admins[index].password = await sha256('123456');
+                    await saveData(env, 'admins', admins);
                 }
                 
                 if (!isValid) {
@@ -196,7 +189,6 @@ export default {
                 
                 if (!token) return null;
                 
-                // FIX 4: Hardened token trim
                 const trimmedToken = (token || '').trim();
                 if (!trimmedToken) return null;
                 
@@ -245,9 +237,9 @@ export default {
                 });
             }
             
-            // ==================== RESET SYSTEM (FIXED with flexible confirm + hardening) ====================
+            // ==================== RESET SYSTEM ====================
             if (path === '/admin/reset-system' && request.method === 'POST') {
-                // FIX 1: SUPER_ADMIN only guard
+                // SUPER_ADMIN only guard
                 if (!auth || auth.role !== 'SUPER_ADMIN') {
                     return new Response(JSON.stringify({
                         ok: false,
@@ -255,7 +247,7 @@ export default {
                     }), { headers: corsHeaders, status: 403 });
                 }
                 
-                // FIX 2: Prevent double reset execution
+                // Prevent double reset execution
                 if (globalThis.__reset_lock) {
                     return new Response(JSON.stringify({
                         ok: false,
@@ -266,7 +258,6 @@ export default {
                 globalThis.__reset_lock = true;
                 
                 try {
-                    // FIX 3: Safe JSON parse
                     const body = await request.json().catch(() => ({}));
 
                     // flexible confirm: support body OR header
@@ -281,7 +272,6 @@ export default {
                         }), { headers: corsHeaders });
                     }
                     
-                    // FIX 7: Log throttle
                     if (Math.random() < 0.1) console.log('[RESET_SYSTEM]', {
                         by: auth?.username || 'unknown',
                         time: Date.now()
@@ -292,7 +282,7 @@ export default {
                     
                     let admins = await safeArray(env, 'admins');
                     
-                    // Reset all admin tokens
+                    // 🔒 RESET PATCH: Only reset tokens, NEVER touch passwords
                     for (let i = 0; i < admins.length; i++) {
                         admins[i].token = null;
                     }
@@ -334,7 +324,8 @@ export default {
                     await saveData(env, 'violations', []);
                     await saveData(env, 'devices', []);
                     
-                    await forceInit(env);
+                    // 🔒 RESET PATCH: Force init WITHOUT password override
+                    await forceInitNoPasswordOverride(env);
                     
                     return new Response(JSON.stringify({
                         ok: true,
@@ -342,14 +333,13 @@ export default {
                     }), { headers: corsHeaders });
                     
                 } finally {
-                    // FIX 2: Release lock
                     globalThis.__reset_lock = false;
                 }
             }
             
             // ==================== RESET PER COMPANY ====================
             if (path === '/admin/reset-company' && request.method === 'POST') {
-                // FIX 1: SUPER_ADMIN only guard
+                // SUPER_ADMIN only guard
                 if (!auth || auth.role !== 'SUPER_ADMIN') {
                     return new Response(JSON.stringify({
                         ok: false,
@@ -357,7 +347,6 @@ export default {
                     }), { headers: corsHeaders, status: 403 });
                 }
                 
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { companyId } = body;
 
@@ -406,7 +395,6 @@ export default {
                 company.currentDevices = 0;
                 await saveData(env, 'companies', companies);
 
-                // FIX 7: Log throttle
                 if (Math.random() < 0.1) console.log('[RESET_COMPANY]', {
                     companyId,
                     by: auth?.username || 'unknown',
@@ -498,9 +486,8 @@ export default {
                 }
             }
             
-            // ==================== CLIENT ENDPOINTS (with safe JSON parse) ====================
+            // ==================== CLIENT ENDPOINTS ====================
             if (path === '/validate-license' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, deviceName, meta } = body;
                 
@@ -581,7 +568,6 @@ export default {
             }
             
             if (path === '/client/devices' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { licenseKey } = body;
                 
@@ -597,7 +583,6 @@ export default {
             }
             
             if (path === '/site-names' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { licenseKey, sites, customSites } = body;
                 
@@ -650,7 +635,6 @@ export default {
             }
             
             if (path === '/checkin' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, action, location, qrData } = body;
                 
@@ -698,7 +682,6 @@ export default {
                 };
                 activities.unshift(activity);
                 
-                // FIX 6: Limit activity memory
                 if (activities.length > 5000) {
                     activities = activities.slice(0, 5000);
                 }
@@ -721,7 +704,6 @@ export default {
                     timestamp: Date.now()
                 });
                 
-                // FIX 6: Limit logs memory
                 if (logs.length > 10000) {
                     logs = logs.slice(0, 10000);
                 }
@@ -737,7 +719,6 @@ export default {
             }
             
             if (path === '/save' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 let body;
                 try {
                     body = await request.json();
@@ -851,7 +832,6 @@ export default {
                         let allLogs = await safeArray(env, logsKey);
                         allLogs = [...validLogs, ...allLogs];
                         
-                        // FIX 6: Limit logs memory
                         if (allLogs.length > 10000) {
                             allLogs = allLogs.slice(0, 10000);
                         }
@@ -871,7 +851,6 @@ export default {
                         timestamp: Date.now()
                     });
                     
-                    // FIX 6: Limit reports memory
                     if (reports.length > 5000) {
                         reports = reports.slice(0, 5000);
                     }
@@ -885,7 +864,6 @@ export default {
             }
             
             if (path === '/violation-status' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { licenseKey } = body;
                 
@@ -898,7 +876,6 @@ export default {
             }
             
             if (path === '/report-violation' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, violationType, details, location } = body;
                 
@@ -944,7 +921,6 @@ export default {
                     type: 'VIOLATION_REPORTED'
                 });
                 
-                // FIX 6: Limit activity memory
                 if (activities.length > 5000) {
                     activities = activities.slice(0, 5000);
                 }
@@ -1008,7 +984,6 @@ export default {
             }
             
             if (path === '/request-approval' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const requestBody = await request.json().catch(() => ({}));
                 const { licenseKey, deviceId, deviceName, reason } = requestBody;
                 
@@ -1035,7 +1010,6 @@ export default {
             }
             
             if (path === '/request-device' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const requestBody = await request.json().catch(() => ({}));
                 const { licenseKey, deviceName, reason } = requestBody;
                 
@@ -1221,7 +1195,6 @@ export default {
             }
             
             if (path === '/approve-device-request' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const requestBody = await request.json().catch(() => ({}));
                 const { requestId, approve, notes } = requestBody;
                 
@@ -1268,7 +1241,6 @@ export default {
             }
             
             if (path === '/generate-license' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { companyName, pic, phone, email, address, package: pkg, customMaxDevices, notes } = body;
                 
@@ -1316,7 +1288,6 @@ export default {
             }
             
             if (path === '/renew-license' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { companyId, months, amount, paymentMethod } = body;
                 
@@ -1353,7 +1324,6 @@ export default {
             }
             
             if (path === '/update-package' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { companyId, newPackage, customMaxDevices, notes } = body;
                 
@@ -1378,7 +1348,6 @@ export default {
             }
             
             if (path === '/approve-device' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { deviceId, approve } = body;
                 
@@ -1423,7 +1392,6 @@ export default {
             }
             
             if (path === '/delete-device' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { deviceId, reason } = body;
                 
@@ -1447,7 +1415,6 @@ export default {
             }
             
             if (path === '/delete-company' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { companyId } = body;
                 
@@ -1479,7 +1446,6 @@ export default {
             }
             
             if (path === '/mark-invoice-paid' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { invoiceId, paymentMethod } = body;
                 
@@ -1538,7 +1504,6 @@ export default {
             }
             
             if (path === '/admin/add-user' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { username, password, role } = body;
                 
@@ -1564,16 +1529,22 @@ export default {
                 return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
             }
             
+            // 🔧 PATCH 2: Proteksi SUPER_ADMIN dari delete
             if (path === '/admin/delete-user' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 const { username } = body;
                 
-                if (username === 'admin') {
-                    return new Response(JSON.stringify({ ok: false, error: 'Cannot delete default admin' }), { headers: corsHeaders });
+                const admins = await safeArray(env, 'admins');
+                const target = admins.find(a => a.username === username);
+                
+                // 🔒 PROTECT: Cannot delete SUPER_ADMIN
+                if (target && target.role === 'SUPER_ADMIN') {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: 'Cannot delete SUPER_ADMIN'
+                    }), { headers: corsHeaders });
                 }
                 
-                const admins = await safeArray(env, 'admins');
                 const filtered = admins.filter(a => a.username !== username);
                 await saveData(env, 'admins', filtered);
                 
@@ -1581,7 +1552,6 @@ export default {
             }
             
             if (path === '/admin/settings' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 await saveData(env, 'settings', body);
                 return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
@@ -1593,7 +1563,6 @@ export default {
             }
             
             if (path === '/sync-users' && request.method === 'POST') {
-                // FIX 3: Safe JSON parse
                 const body = await request.json().catch(() => ({}));
                 if (body.users && Array.isArray(body.users)) {
                     let serverUsers = await safeArray(env, 'users_from_clients');
@@ -1650,6 +1619,7 @@ export default {
 
 // ==================== KV STORAGE LAYER ====================
 
+// 🔧 PATCH 1 & PATCH 3: forceInit with NO password override
 async function forceInit(env) {
     console.log('[FORCE_INIT] Starting initialization...');
     
@@ -1694,12 +1664,18 @@ async function forceInit(env) {
                 console.log('[FORCE_INIT] Updated admin records with missing fields');
             }
             
-            const defaultAdmin = admins.find(a => a.username === 'admin');
-            if (defaultAdmin) {
-                const expectedHash = await sha256('123456');
-                if (defaultAdmin.password !== expectedHash && defaultAdmin.password !== '123456') {
-                    console.log('[FORCE_INIT] Updating default admin password hash');
-                    defaultAdmin.password = expectedHash;
+            // 🔒 PATCH 1: REMOVED - DO NOT override existing admin credentials
+            // 🔒 Only ensure minimal required fields exist
+            for (let i = 0; i < admins.length; i++) {
+                if (!admins[i].role) admins[i].role = 'ADMIN';
+                if (!admins[i].username) admins[i].username = 'unknown_' + generateId();
+            }
+            
+            // 🔒 PATCH 3: Ensure at least one SUPER_ADMIN exists (tanpa override password)
+            if (!admins.some(a => a.role === 'SUPER_ADMIN')) {
+                console.warn('[FORCE_INIT] No SUPER_ADMIN found, promoting first admin');
+                if (admins.length > 0) {
+                    admins[0].role = 'SUPER_ADMIN';
                     await saveData(env, 'admins', admins);
                 }
             }
@@ -1753,6 +1729,115 @@ async function forceInit(env) {
     }
 }
 
+// 🔒 Special function for reset system - NO password override
+async function forceInitNoPasswordOverride(env) {
+    console.log('[FORCE_INIT_NO_OVERRIDE] Starting safe initialization...');
+    
+    try {
+        const testKey = '__vms_test__';
+        await env.VMS_STORAGE.put(testKey, 'test');
+        const testVal = await env.VMS_STORAGE.get(testKey);
+        console.log(`[FORCE_INIT_NO_OVERRIDE] KV test: ${testVal === 'test' ? 'OK' : 'FAILED'}`);
+        
+        let admins = await safeArray(env, 'admins');
+        
+        if (!admins || admins.length === 0) {
+            console.log('[FORCE_INIT_NO_OVERRIDE] No admins found, creating default...');
+            
+            const defaultHash = await sha256('123456');
+            
+            admins = [{
+                id: generateId(),
+                username: 'admin',
+                password: defaultHash,
+                role: 'SUPER_ADMIN',
+                createdAt: Date.now(),
+                createdBy: 'system',
+                token: null
+            }];
+            
+            await saveData(env, 'admins', admins);
+            console.log('[FORCE_INIT_NO_OVERRIDE] Default admin created');
+        } else {
+            console.log(`[FORCE_INIT_NO_OVERRIDE] Found ${admins.length} existing admins`);
+            
+            // 🔒 ONLY ensure minimal fields - NEVER touch passwords
+            let needsSave = false;
+            for (let i = 0; i < admins.length; i++) {
+                if (!admins[i].role) {
+                    admins[i].role = 'ADMIN';
+                    needsSave = true;
+                }
+                if (!admins[i].username) {
+                    admins[i].username = 'unknown_' + generateId();
+                    needsSave = true;
+                }
+                if (!admins[i].password) {
+                    // This should never happen, but create placeholder
+                    admins[i].password = await sha256('changeme_' + generateId());
+                    needsSave = true;
+                }
+            }
+            
+            if (needsSave) {
+                await saveData(env, 'admins', admins);
+            }
+            
+            // 🔒 Ensure at least one SUPER_ADMIN exists
+            if (!admins.some(a => a.role === 'SUPER_ADMIN')) {
+                console.warn('[FORCE_INIT_NO_OVERRIDE] No SUPER_ADMIN found, promoting first admin');
+                if (admins.length > 0) {
+                    admins[0].role = 'SUPER_ADMIN';
+                    await saveData(env, 'admins', admins);
+                }
+            }
+        }
+        
+        let settings = await safeObject(env, 'settings');
+        if (!settings || Object.keys(settings).length === 0) {
+            console.log('[FORCE_INIT_NO_OVERRIDE] Creating default settings...');
+            settings = {
+                pricing: {
+                    BASIC: { price: 500000, maxDevices: 10, extraDeviceFee: 50000 },
+                    PRO: { price: 2000000, maxDevices: 999, extraDeviceFee: 0 }
+                },
+                general: { 
+                    tax: 11,
+                    company: "VMS System",
+                    version: "3.0"
+                }
+            };
+            await saveData(env, 'settings', settings);
+        }
+        
+        const arrayCollections = [
+            'companies', 'device_requests', 'users_from_clients', 'invoices'
+        ];
+        
+        for (const collection of arrayCollections) {
+            const data = await safeArray(env, collection);
+            if (!Array.isArray(data) || data.length === undefined) {
+                await saveData(env, collection, []);
+            }
+        }
+        
+        const objectCollections = ['site_names'];
+        for (const collection of objectCollections) {
+            const data = await safeObject(env, collection);
+            if (!data || typeof data !== 'object') {
+                await saveData(env, collection, {});
+            }
+        }
+        
+        console.log('[FORCE_INIT_NO_OVERRIDE] Safe initialization complete!');
+        return true;
+        
+    } catch (e) {
+        console.error('[FORCE_INIT_NO_OVERRIDE] Error:', e);
+        return false;
+    }
+}
+
 async function getData(env, key) {
     try {
         if (!env || !env.VMS_STORAGE) {
@@ -1780,7 +1865,7 @@ async function getData(env, key) {
 
 async function saveData(env, key, data) {
     try {
-        // FIX 5: Safe array write (anti corrupt)
+        // Safe array write (anti corrupt)
         if (data === undefined || data === null) {
             data = [];
         }
