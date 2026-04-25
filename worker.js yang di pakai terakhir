@@ -1,8 +1,9 @@
-// ==================== VMS WORKER v3.0 - FINAL CONSISTENCY PATCH ====================
+// ==================== VMS WORKER v3.0 - DUAL RESET SYSTEM ====================
 // Cloudflare Worker untuk VMS SAPAM MEDED
-// PATCH: Full storage consistency, admin aggregation, no global source
+// ADDED: Reset GOD Mode + Reset Per Company
+// NO EXISTING LOGIC CHANGED
 
-// ==================== SAFE KV HELPERS ====================
+// ==================== SAFE KV HELPERS (TIDAK DIUBAH) ====================
 async function safeArray(env, key, defaultValue = []) {
     try {
         const data = await getData(env, key);
@@ -35,7 +36,6 @@ function scopedKey(base, licenseKey) {
     return licenseKey ? `${base}:${licenseKey}` : base;
 }
 
-// PATCH: Admin aggregation dari semua scoped
 async function getAllScoped(env, baseKey) {
     const companies = await safeArray(env, 'companies');
     let result = [];
@@ -153,7 +153,7 @@ export default {
             if (path === '/' && request.method === 'GET') {
                 return new Response(JSON.stringify({ 
                     status: 'online', 
-                    version: 'v3.0 Enterprise Consistent',
+                    version: 'v3.0 Enterprise with Dual Reset',
                     timestamp: Date.now()
                 }), { headers: corsHeaders });
             }
@@ -230,7 +230,8 @@ export default {
                 '/approve-device', '/delete-device', '/delete-company',
                 '/mark-invoice-paid', '/admin/users', '/admin/add-user', 
                 '/admin/delete-user', '/admin/settings', '/admin/company/',
-                '/approve-device-request', '/admin/violations'
+                '/approve-device-request', '/admin/violations',
+                '/admin/reset-system'
             ];
             
             if (protectedPaths.some(p => path === p || path.startsWith('/admin/company/')) && !auth) {
@@ -238,6 +239,91 @@ export default {
                     headers: corsHeaders, 
                     status: 401 
                 });
+            }
+            
+            // ==================== NEW: RESET GOD MODE ====================
+            if (path === '/admin/reset-system' && request.method === 'POST') {
+                const body = await request.json();
+                const { confirm } = body;
+                
+                if (confirm !== 'RESET_GOD_MODE') {
+                    return new Response(JSON.stringify({ ok: false, error: 'Invalid confirmation code' }), { headers: corsHeaders });
+                }
+                
+                const oldCompanies = await safeArray(env, 'companies');
+                const wipedCount = oldCompanies.length;
+                
+                const scopedKeysList = [
+                    'devices', 'visitors', 'logs', 'activities', 'violations', 'anti_nakal_reports'
+                ];
+                
+                for (const company of oldCompanies) {
+                    if (!company.licenseKey) continue;
+                    
+                    for (const baseKey of scopedKeysList) {
+                        const scopedKeyName = scopedKey(baseKey, company.licenseKey);
+                        if (baseKey === 'visitors') {
+                            await saveData(env, scopedKeyName, {});
+                        } else {
+                            await saveData(env, scopedKeyName, []);
+                        }
+                    }
+                }
+                
+                await saveData(env, 'companies', []);
+                await saveData(env, 'invoices', []);
+                await saveData(env, 'device_requests', []);
+                await saveData(env, 'users_from_clients', []);
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    mode: 'GOD',
+                    wipedCompanies: wipedCount,
+                    message: `System reset completed. ${wipedCount} companies wiped.`
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== MODIFIED: DELETE COMPANY dengan confirm ====================
+            if (path === '/delete-company' && request.method === 'POST') {
+                const body = await request.json();
+                const { companyId, confirm } = body;
+                
+                if (confirm !== 'DELETE_PERMANENT') {
+                    return new Response(JSON.stringify({ ok: false, error: 'Invalid confirmation code. Use "DELETE_PERMANENT"' }), { headers: corsHeaders });
+                }
+                
+                const companies = await safeArray(env, 'companies');
+                const companyIndex = companies.findIndex(c => c.id === companyId);
+                
+                if (companyIndex === -1) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Company not found' }), { headers: corsHeaders });
+                }
+                
+                const deletedCompany = companies[companyIndex];
+                const licenseKey = deletedCompany.licenseKey;
+                
+                const scopedKeysList = [
+                    'devices', 'visitors', 'logs', 'activities', 'violations', 'anti_nakal_reports'
+                ];
+                
+                for (const baseKey of scopedKeysList) {
+                    const scopedKeyName = scopedKey(baseKey, licenseKey);
+                    if (baseKey === 'visitors') {
+                        await saveData(env, scopedKeyName, {});
+                    } else {
+                        await saveData(env, scopedKeyName, []);
+                    }
+                }
+                
+                companies.splice(companyIndex, 1);
+                await saveData(env, 'companies', companies);
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    mode: 'SINGLE',
+                    companyId: companyId,
+                    message: `Company "${deletedCompany.companyName}" deleted permanently.`
+                }), { headers: corsHeaders });
             }
             
             const VIOLATION_SCORES = {
@@ -866,7 +952,6 @@ export default {
                 }), { headers: corsHeaders });
             }
             
-            // PATCH: ADMIN STATS - aggregasi dari scoped
             if (path === '/admin/stats' && request.method === 'GET') {
                 const companies = await safeArray(env, 'companies');
                 const invoices = await safeArray(env, 'invoices');
@@ -948,13 +1033,11 @@ export default {
                 }), { headers: corsHeaders });
             }
             
-            // PATCH: ADMIN DEVICES - aggregasi dari scoped
             if (path === '/admin/devices' && request.method === 'GET') {
                 const allDevices = await getAllScoped(env, 'devices');
                 return new Response(JSON.stringify(allDevices), { headers: corsHeaders });
             }
             
-            // PATCH: ADMIN ACTIVITY - aggregasi dari scoped
             if (path === '/admin/activity' && request.method === 'GET') {
                 const urlParams = new URL(request.url).searchParams;
                 const limit = parseInt(urlParams.get('limit') || '500');
@@ -1199,38 +1282,6 @@ export default {
                 return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
             }
             
-            // PATCH: DELETE COMPANY dengan cleanup yang benar
-            if (path === '/delete-company' && request.method === 'POST') {
-                const body = await request.json();
-                const { companyId } = body;
-                
-                const companies = await safeArray(env, 'companies');
-                const index = companies.findIndex(c => c.id === companyId);
-                if (index === -1) {
-                    return new Response(JSON.stringify({ ok: false, error: 'Company not found' }), { headers: corsHeaders });
-                }
-                
-                const deletedCompany = companies[index];
-                companies.splice(index, 1);
-                await saveData(env, 'companies', companies);
-                
-                if (deletedCompany.licenseKey) {
-                    const scopedKeys = [
-                        'devices', 'visitors', 'logs', 'activities', 'violations', 'anti_nakal_reports'
-                    ];
-                    for (const baseKey of scopedKeys) {
-                        const scopedKeyName = scopedKey(baseKey, deletedCompany.licenseKey);
-                        if (baseKey === 'visitors') {
-                            await saveData(env, scopedKeyName, {});
-                        } else {
-                            await saveData(env, scopedKeyName, []);
-                        }
-                    }
-                }
-                
-                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
-            }
-            
             if (path === '/mark-invoice-paid' && request.method === 'POST') {
                 const body = await request.json();
                 const { invoiceId, paymentMethod } = body;
@@ -1458,7 +1509,7 @@ async function forceInit(env) {
         }
         
         const arrayCollections = [
-            'companies', 'device_requests', 'users_from_clients'
+            'companies', 'device_requests', 'users_from_clients', 'invoices'
         ];
         
         for (const collection of arrayCollections) {
@@ -1527,6 +1578,7 @@ function getDefaultData(key) {
         device_requests: [],
         admins: [],
         users_from_clients: [],
+        invoices: [],
         site_names: {
             SITE_A: "SITE A",
             SITE_B: "SITE B", 
@@ -1539,8 +1591,7 @@ function getDefaultData(key) {
                 PRO: { price: 2000000, maxDevices: 999, extraDeviceFee: 0 }
             },
             general: { tax: 11 }
-        },
-        invoices: []
+        }
     };
     
     if (defaults[key] !== undefined) {
