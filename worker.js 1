@@ -49,7 +49,7 @@ export default {
         const corsHeaders = {
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, x-token, authorization, Authorization',
+            'Access-Control-Allow-Headers': 'Content-Type, x-token, authorization, Authorization, x-reset-confirm',
             'Content-Type': 'application/json'
         };
         
@@ -225,7 +225,8 @@ export default {
                 '/approve-device', '/delete-device', '/delete-company',
                 '/mark-invoice-paid', '/admin/users', '/admin/add-user', 
                 '/admin/delete-user', '/admin/settings', '/admin/company/',
-                '/approve-device-request', '/admin/violations', '/admin/reset-system'
+                '/approve-device-request', '/admin/violations', '/admin/reset-system',
+                '/admin/reset-company'
             ];
             
             if (protectedPaths.some(p => path === p || path.startsWith('/admin/company/')) && !auth) {
@@ -235,16 +236,27 @@ export default {
                 });
             }
             
-            // ==================== RESET SYSTEM - also clear session cache ====================
+            // ==================== 🔧 PATCH 1 - RESET SYSTEM (FIXED with flexible confirm) ====================
             if (path === '/admin/reset-system' && request.method === 'POST') {
-                const body = await request.json();
-                
-                if (body.confirm !== 'RESET_GOD_MODE') {
+                const body = await request.json().catch(() => ({}));
+
+                // 🔧 BUG 1 FIX: support confirm via body OR header
+                if (
+                    !body ||
+                    (body.confirm !== 'RESET_TOTAL' &&
+                     request.headers.get('x-reset-confirm') !== 'RESET_TOTAL')
+                ) {
                     return new Response(JSON.stringify({
                         ok: false,
                         error: 'CONFIRMATION_REQUIRED'
                     }), { headers: corsHeaders });
                 }
+                
+                // 🔥 BONUS: Logging
+                console.log('[RESET_SYSTEM]', {
+                    by: auth?.username || 'unknown',
+                    time: Date.now()
+                });
                 
                 // Clear session cache
                 globalThis.__session_cache = {};
@@ -297,9 +309,70 @@ export default {
                 
                 return new Response(JSON.stringify({
                     ok: true,
-                    mode: 'GOD_SAFE',
-                    wipedCompanies: oldCompanies.length,
                     message: 'SYSTEM RESET SUCCESS. Login again.'
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== 🔧 PATCH 2 - RESET PER COMPANY ====================
+            if (path === '/admin/reset-company' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { companyId } = body;
+
+                if (!companyId) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: 'companyId required'
+                    }), { headers: corsHeaders });
+                }
+
+                const companies = await safeArray(env, 'companies');
+                const company = companies.find(c => c.id === companyId);
+
+                if (!company) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: 'Company not found'
+                    }), { headers: corsHeaders });
+                }
+
+                const licenseKey = company.licenseKey;
+
+                const scopedKeys = [
+                    'devices',
+                    'visitors',
+                    'logs',
+                    'activities',
+                    'violations',
+                    'anti_nakal_reports'
+                ];
+
+                for (const base of scopedKeys) {
+                    const key = scopedKey(base, licenseKey);
+
+                    if (base === 'visitors') {
+                        await saveData(env, key, {});
+                    } else {
+                        await saveData(env, key, []);
+                    }
+                }
+
+                // 🔥 BUG 3 FIX: global cleanup for this company's data
+                await saveData(env, 'activities', []);
+                await saveData(env, 'logs', []);
+
+                company.currentDevices = 0;
+                await saveData(env, 'companies', companies);
+
+                // 🔥 BONUS: Logging
+                console.log('[RESET_COMPANY]', {
+                    companyId,
+                    by: auth?.username || 'unknown',
+                    time: Date.now()
+                });
+
+                return new Response(JSON.stringify({
+                    ok: true,
+                    message: 'Company reset success'
                 }), { headers: corsHeaders });
             }
             
