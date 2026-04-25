@@ -1024,8 +1024,14 @@ window.onunhandledrejection = function(e) {
 
     function forceDownloadPDF(doc, filename){
     try{
-        doc.save(filename); // langsung save tanpa blob
+        const blob = doc.output("blob");
+        const url = URL.createObjectURL(blob);
+
+        // lempar ke browser luar
+        window.open(url, "_blank");
+
         return true;
+
     }catch(err){
         console.error("FORCE DOWNLOAD ERROR:", err);
         return false;
