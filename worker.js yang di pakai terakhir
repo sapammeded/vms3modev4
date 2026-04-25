@@ -1,6 +1,6 @@
-// ==================== VMS WORKER v3.0 - LOGIN TOKEN FIXED ====================
+// ==================== VMS WORKER v3.0 - LOGIN TOTAL FIXED ====================
 // Cloudflare Worker untuk VMS SAPAM MEDED
-// FIX: Token hanya di-reset SETELAH login berhasil, bukan sebelum
+// FIX: Single write, memory cache, no random login fail
 
 // ==================== SAFE KV HELPERS ====================
 async function safeArray(env, key, defaultValue = []) {
@@ -33,6 +33,11 @@ async function safeObject(env, key, defaultValue = {}) {
 
 function scopedKey(base, licenseKey) {
     return licenseKey ? `${base}:${licenseKey}` : base;
+}
+
+// ==================== GLOBAL SESSION CACHE ====================
+if (!globalThis.__session_cache) {
+    globalThis.__session_cache = {};
 }
 
 // ==================== MAIN HANDLER ====================
@@ -90,7 +95,7 @@ export default {
                 }), { headers: corsHeaders });
             }
             
-            // ==================== LOGIN HANDLER - FIXED (NO TOKEN RESET BEFORE VALIDATION) ====================
+            // ==================== LOGIN FIX - SINGLE WRITE + CACHE ====================
             if (path === '/login' && request.method === 'POST') {
                 const body = await request.json();
                 const { username, password } = body;
@@ -103,9 +108,8 @@ export default {
                     admins = await safeArray(env, 'admins');
                 }
                 
-                const admin = admins.find(a => a.username === username);
-                
-                if (!admin) {
+                const index = admins.findIndex(a => a.username === username);
+                if (index === -1) {
                     console.log(`[LOGIN] User not found: ${username}`);
                     return new Response(JSON.stringify({ ok: false, error: 'User not found' }), { 
                         headers: corsHeaders, 
@@ -113,24 +117,22 @@ export default {
                     });
                 }
                 
+                const admin = admins[index];
                 console.log(`[LOGIN] User found: ${admin.username}, role: ${admin.role}`);
                 
                 const hashedInputPassword = await sha256(password);
-                let storedPassword = admin.password;
+                let isValid = (hashedInputPassword === admin.password);
                 
-                let isValid = (hashedInputPassword === storedPassword);
-                
-                if (!isValid && storedPassword === password) {
+                if (!isValid && admin.password === password) {
                     console.log(`[LOGIN] Plain text match, upgrading to hash...`);
                     isValid = true;
-                    admin.password = hashedInputPassword;
-                    storedPassword = admin.password;
+                    admins[index].password = hashedInputPassword;
                 }
                 
                 if (!isValid && username === 'admin' && password === '123456') {
                     console.log(`[LOGIN] Using default admin fallback`);
                     isValid = true;
-                    admin.password = await sha256('123456');
+                    admins[index].password = await sha256('123456');
                 }
                 
                 if (!isValid) {
@@ -141,30 +143,30 @@ export default {
                     });
                 }
                 
-                // 🔥 FIX: HANYA SETELAH PASSWORD VALID, baru reset token admin lain
-                // Hapus token dari semua admin dengan username yang sama
-                admins = admins.map(a => {
-                    if (a.username === username) {
-                        return { ...a, token: null };
-                    }
-                    return a;
-                });
-                
+                // 🔥 SINGLE WRITE ONLY - no double save, no reset token before
                 const token = 'vms_token_' + Date.now() + '_' + crypto.randomUUID();
-                admin.token = token;
-                admin.lastLogin = Date.now();
                 
-                // Update admin di array
-                const updatedAdmins = admins.map(a => {
-                    if (a.username === username) {
-                        return admin;
+                admins[index].token = token;
+                admins[index].lastLogin = Date.now();
+                
+                await saveData(env, 'admins', admins);
+                
+                // 🔥 CACHE TO MEMORY (ANTI KV DELAY)
+                globalThis.__session_cache[token] = {
+                    username: admin.username,
+                    role: admin.role,
+                    id: admin.id
+                };
+                
+                // Clean old cache (optional, keep last 100)
+                const cacheKeys = Object.keys(globalThis.__session_cache);
+                if (cacheKeys.length > 100) {
+                    for (let i = 0; i < cacheKeys.length - 100; i++) {
+                        delete globalThis.__session_cache[cacheKeys[i]];
                     }
-                    return a;
-                });
+                }
                 
-                await saveData(env, 'admins', updatedAdmins);
-                
-                console.log(`[LOGIN] Success for: ${username}`);
+                console.log(`[LOGIN] Success for: ${username}, token saved to KV + cache`);
                 
                 return new Response(JSON.stringify({
                     ok: true,
@@ -172,6 +174,46 @@ export default {
                     username: admin.username,
                     role: admin.role
                 }), { headers: corsHeaders });
+            }
+            
+            // ==================== AUTH CHECK - MEMORY FIRST ====================
+            async function checkAuth(headers, env) {
+                let token = headers.get('x-token');
+                
+                if (!token) {
+                    const authHeader = headers.get('authorization') || headers.get('Authorization');
+                    if (authHeader && authHeader.startsWith('Bearer ')) {
+                        token = authHeader.split(' ')[1];
+                    }
+                }
+                
+                if (!token) return null;
+                
+                const trimmedToken = token.trim();
+                
+                // 🔥 1. MEMORY CACHE FIRST (LANGSUNG TEMBUS)
+                if (globalThis.__session_cache[trimmedToken]) {
+                    console.log(`[AUTH] Cache hit for token: ${trimmedToken.substring(0, 20)}...`);
+                    return globalThis.__session_cache[trimmedToken];
+                }
+                
+                // 🔥 2. KV FALLBACK (JIKA CACHE MISS)
+                const admins = await safeArray(env, 'admins');
+                const admin = admins.find(a => a.token && a.token.trim() === trimmedToken);
+                
+                if (admin && admin.lastLogin && (Date.now() - admin.lastLogin) < 24 * 3600000) {
+                    const session = {
+                        username: admin.username,
+                        role: admin.role,
+                        id: admin.id
+                    };
+                    // Simpan ke cache untuk request berikutnya
+                    globalThis.__session_cache[trimmedToken] = session;
+                    console.log(`[AUTH] Cache miss, loaded from KV for: ${admin.username}`);
+                    return session;
+                }
+                
+                return null;
             }
             
             const auth = await checkAuth(request.headers, env);
@@ -193,7 +235,7 @@ export default {
                 });
             }
             
-            // ==================== RESET SYSTEM ====================
+            // ==================== RESET SYSTEM - also clear session cache ====================
             if (path === '/admin/reset-system' && request.method === 'POST') {
                 const body = await request.json();
                 
@@ -204,12 +246,15 @@ export default {
                     }), { headers: corsHeaders });
                 }
                 
+                // Clear session cache
+                globalThis.__session_cache = {};
+                
                 let admins = await safeArray(env, 'admins');
                 
-                admins = admins.map(a => ({
-                    ...a,
-                    token: null
-                }));
+                // Reset all admin tokens
+                for (let i = 0; i < admins.length; i++) {
+                    admins[i].token = null;
+                }
                 await saveData(env, 'admins', admins);
                 
                 const oldCompanies = await safeArray(env, 'companies');
@@ -697,6 +742,18 @@ export default {
                 return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
             }
             
+            if (path === '/violation-status' && request.method === 'POST') {
+                const body = await request.json();
+                const { licenseKey } = body;
+                
+                if (!licenseKey) {
+                    return new Response(JSON.stringify({ ok: false, error: 'License key required' }), { headers: corsHeaders });
+                }
+                
+                const status = await getViolationStatus(licenseKey);
+                return new Response(JSON.stringify({ ok: true, status: status }), { headers: corsHeaders });
+            }
+            
             if (path === '/report-violation' && request.method === 'POST') {
                 const body = await request.json();
                 const { licenseKey, deviceId, violationType, details, location } = body;
@@ -749,6 +806,55 @@ export default {
                     violation: violation,
                     deviceStatus: deviceStatus,
                     violationCount: violationCount
+                }), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/violations' && request.method === 'GET') {
+                if (!auth) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { 
+                        headers: corsHeaders, 
+                        status: 401 
+                    });
+                }
+                
+                const urlParams = new URL(request.url).searchParams;
+                const licenseKey = urlParams.get('licenseKey');
+                const limit = parseInt(urlParams.get('limit') || '100');
+                
+                let violations = [];
+                if (licenseKey) {
+                    const violationsKey = scopedKey('violations', licenseKey);
+                    violations = await safeArray(env, violationsKey);
+                    violations = violations.filter(v => v.licenseKey === licenseKey);
+                } else {
+                    const companiesList = await safeArray(env, 'companies');
+                    for (const comp of companiesList) {
+                        if (!comp.licenseKey) continue;
+                        const vKey = scopedKey('violations', comp.licenseKey);
+                        const compViolations = await safeArray(env, vKey);
+                        violations.push(...compViolations);
+                    }
+                }
+                
+                violations = violations.slice(0, limit);
+                
+                const summary = {};
+                for (const v of violations) {
+                    if (!summary[v.licenseKey]) {
+                        summary[v.licenseKey] = {
+                            totalScore: 0,
+                            counts: {}
+                        };
+                    }
+                    summary[v.licenseKey].totalScore += v.score || 1;
+                    summary[v.licenseKey].counts[v.type] = (summary[v.licenseKey].counts[v.type] || 0) + 1;
+                }
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    violations: violations,
+                    summary: summary,
+                    total: violations.length
                 }), { headers: corsHeaders });
             }
             
@@ -1414,9 +1520,9 @@ async function forceInit(env) {
             console.log(`[FORCE_INIT] Found ${admins.length} existing admins`);
             
             let needsSave = false;
-            for (const admin of admins) {
-                if (!admin.token) {
-                    admin.token = null;
+            for (let i = 0; i < admins.length; i++) {
+                if (!admins[i].token) {
+                    admins[i].token = null;
                     needsSave = true;
                 }
             }
@@ -1555,28 +1661,6 @@ function getDefaultData(key) {
     }
     
     return [];
-}
-
-async function checkAuth(headers, env) {
-    let token = headers.get('x-token');
-    
-    if (!token) {
-        const authHeader = headers.get('authorization') || headers.get('Authorization');
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            token = authHeader.split(' ')[1];
-        }
-    }
-    
-    if (!token) return null;
-    
-    const admins = await safeArray(env, 'admins');
-    const admin = admins.find(a => a.token === token);
-    
-    if (admin && admin.lastLogin && (Date.now() - admin.lastLogin) < 24 * 3600000) {
-        return { username: admin.username, role: admin.role, id: admin.id };
-    }
-    
-    return null;
 }
 
 function generateId() {
