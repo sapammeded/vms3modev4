@@ -859,7 +859,7 @@
                             <tr><th>Company</th><th>Device Name</th><th>Fee</th><th>Status</th><th>Requested</th><th>Actions</th></tr>
                         </thead>
                         <tbody></tbody>
-                    </table>
+                    </tr>
                 </div>
             </div>
         </div>
@@ -1351,13 +1351,13 @@ function renderCompaniesTable() {
             <td>${company.currentDevices || 0} / ${company.maxDevices}</td>
             <td>${company.maxDevices}</td>
             <td class="${isExpired ? "text-danger" : ""}">${formatDate(company.expiredAt)}</span></td>
-            <td><span class="badge ${isExpired ? "badge-expired" : "badge-active"}">${isExpired ? "EXPIRED" : (company.status || "ACTIVE")}</span>             <td>
+            <td><span class="badge ${isExpired ? "badge-expired" : "badge-active"}">${isExpired ? "EXPIRED" : (company.status || "ACTIVE")}</span></td>
+            <td>
                 <button class="btn btn-info btn-sm" onclick="viewCompanyDetails('${company.id}')">Detail</button>
                 <button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button>
                 <button class="btn btn-primary btn-sm" onclick="openUpgradeModal('${company.id}', '${escapeHtml(company.companyName)}', '${company.package}')">Upgrade</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteCompany('${company.id}')">Delete</button>
-            </span>
-            </span>
+            </td>
         `;
     }
 }
@@ -1780,7 +1780,7 @@ function viewDeviceDetails(deviceId) {
         </div>
         <hr style="border-color: var(--border); margin: 16px 0;">
         <h4 style="margin-bottom: 12px;">⚠️ Violation History</h4>
-        <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<table>:<span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</span></td><td>${formatDateTime(v.timestamp)}</span></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}</tbody>}</table></div>
+        <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<tr>:<span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</span></td><td>${formatDateTime(v.timestamp)}</span></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}</tbody>}</table></div>
     `;
     document.getElementById("deviceDetailModal").classList.add("active");
 }
