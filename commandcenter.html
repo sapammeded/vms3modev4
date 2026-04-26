@@ -682,7 +682,7 @@
                             <tr><th>Company</th><th>Package</th><th>Expiry Date</th><th>Devices</th><th>Status</th><th>Action</th></tr>
                         </thead>
                         <tbody></tbody>
-                    </table>
+                    <tr>
                 </div>
             </div>
         </div>
@@ -1086,20 +1086,65 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+// ================= EXECUTION CONTROL CORE =================
+
+// Queue untuk memastikan semua action jalan berurutan
+let ACTION_QUEUE = Promise.resolve();
+
+// Lock untuk mencegah double click / spam
+let ACTION_LOCK = false;
+
+// Enqueue (biar ga parallel)
+function enqueueAction(fn) {
+    ACTION_QUEUE = ACTION_QUEUE
+        .then(() => fn())
+        .catch(err => {
+            console.error('ACTION ERROR:', err);
+        });
+
+    return ACTION_QUEUE;
+}
+
+// Guard (anti double trigger)
+async function guardedAction(fn) {
+    if (ACTION_LOCK) return;
+    ACTION_LOCK = true;
+
+    try {
+        await fn();
+    } finally {
+        setTimeout(() => {
+            ACTION_LOCK = false;
+        }, 300);
+    }
+}
+
+// Wrapper FINAL (ini yang lo pakai)
+async function SAFE_ACTION(apiPath, body, reloadFn) {
+    return guardedAction(() =>
+        enqueueAction(async () => {
+            await API.call(apiPath, 'POST', body);
+            if (reloadFn) {
+                await reloadFn();
+            }
+        })
+    );
+}
+
 // ================= VMS GLOBAL CORE =================
 const VMS = {
-    license: localStorage.getItem("vms_license_key") || "",
-    deviceId: localStorage.getItem("vms_device_id") || "",
-    site: localStorage.getItem("vms_site") || "SITE_A"
+    license: localStorage.getItem("licenseKey") || "",
+    deviceId: localStorage.getItem("deviceId") || "",
+    site: localStorage.getItem("currentSite") || "SITE_A"
 };
 
 if (!VMS.deviceId) {
     VMS.deviceId = "dev_" + crypto.randomUUID();
-    localStorage.setItem("vms_device_id", VMS.deviceId);
+    localStorage.setItem("deviceId", VMS.deviceId);
 }
 
 window.addEventListener("storage", (e) => {
-    if (["vms_data", "vms_license_key", "vms_site"].includes(e.key)) {
+    if (["vms_data", "licenseKey", "currentSite"].includes(e.key)) {
         location.reload();
     }
 });
@@ -1112,6 +1157,24 @@ let companiesData = [];
 let devicesData = [];
 let activityData = [];
 let invoicesData = [];
+let ADMIN_LOCK = false;
+
+// ================= SAFE RELOAD ENGINE =================
+async function reloadAdminAllSafe() {
+    if (ADMIN_LOCK) return;
+    ADMIN_LOCK = true;
+    
+    await Promise.all([
+        loadCompanies(),
+        loadDevices(),
+        loadActivity(),
+        loadInvoices(),
+        loadStats(),
+        loadDeviceRequests()
+    ]);
+    
+    setTimeout(() => ADMIN_LOCK = false, 300);
+}
 
 function showToast(message, type = "info") {
     const container = document.getElementById("toastContainer");
@@ -1188,16 +1251,14 @@ async function submitChangePassword() {
 
     try {
         const res = await API.call("/admin/change-password", "POST", { oldPassword, newPassword });
-        if (res && res.ok) {
+        if (res) {
             showToast("Password berhasil diubah. Login ulang...", "success");
             setTimeout(() => {
-                localStorage.removeItem("vms_admin_token");
-                localStorage.removeItem("vms_admin_user");
-                localStorage.removeItem("vms_admin_role");
+                localStorage.removeItem("token");
+                localStorage.removeItem("username");
+                localStorage.removeItem("role");
                 location.reload();
             }, 1500);
-        } else {
-            showToast(res?.error || "Gagal ubah password", "error");
         }
     } catch (e) {
         showToast(e.message, "error");
@@ -1218,12 +1279,10 @@ async function doLogin() {
     try {
         const data = await API.call("/login", "POST", { username, password });
 
-        if (data && data.ok) {
-            localStorage.setItem("vms_admin_token", data.token);
-            localStorage.setItem("vms_admin_user", data.username);
-            localStorage.setItem("vms_admin_role", data.role);
-
-            currentUser = { username: data.username, role: data.role };
+        if (data) {
+            localStorage.setItem("token", data.token);
+            localStorage.setItem("username", data.username);
+            localStorage.setItem("role", data.role);
 
             document.getElementById("loginOverlay").classList.add("hidden");
 
@@ -1235,7 +1294,7 @@ async function doLogin() {
             showToast(`Welcome ${data.username}`, "success");
 
             startRefresh();
-            await loadAllData();
+            await reloadAdminAllSafe();
         } else {
             showToast(data?.error || "Login failed", "error");
         }
@@ -1246,89 +1305,24 @@ async function doLogin() {
 }
 
 function logout() {
-    currentUser = null;
     if (refreshInterval) clearInterval(refreshInterval);
     localStorage.clear();
     document.getElementById("loginOverlay").classList.remove("hidden");
     showToast("Logged out", "info");
 }
 
-async function loadAllData() {
-    if (!localStorage.getItem("vms_admin_token")) return;
-    
-    await Promise.all([
-        loadStats(),
-        loadCompanies(),
-        loadDevices(),
-        loadActivity(),
-        loadInvoices(),
-        loadDeviceRequests()
-    ]);
-    loadRecentLicenses();
-}
-
-async function loadStats() {
-    try {
-        const data = await API.call("/admin/stats", "GET");
-        if (data) {
-            document.getElementById("statTotalCompanies").innerText = data.companies?.total || 0;
-            document.getElementById("statActiveCompanies").innerText = data.companies?.active || 0;
-            document.getElementById("statTotalDevices").innerText = data.devices?.total || 0;
-            document.getElementById("statActiveDevices").innerText = data.devices?.active || 0;
-            document.getElementById("statPendingDevices").innerText = data.devices?.pending || 0;
-            document.getElementById("statSuspendedDevices").innerText = (data.devices?.suspended || 0) + (data.devices?.banned || 0);
-            document.getElementById("statTotalViolations").innerText = data.violations?.total || 0;
-            document.getElementById("statMonthlyRevenue").innerHTML = formatCurrency(data.revenue?.last30Days || 0);
-            
-            if (packageChart) packageChart.destroy();
-            if (violationChart) violationChart.destroy();
-            
-            const pkgCtx = document.getElementById("packageChart").getContext("2d");
-            packageChart = new Chart(pkgCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['DEMO', 'BASIC', 'PRO'],
-                    datasets: [{
-                        data: [data.companies?.byPackage?.DEMO || 0, data.companies?.byPackage?.BASIC || 0, data.companies?.byPackage?.PRO || 0],
-                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981'],
-                        borderWidth: 0
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { color: '#f9fafb' } } } }
-            });
-            
-            const violCtx = document.getElementById("violationChart").getContext("2d");
-            violationChart = new Chart(violCtx, {
-                type: 'line',
-                data: {
-                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-                    datasets: [{
-                        label: 'Violations',
-                        data: [data.violations?.last7Days || 0, 0, 0, data.violations?.last30Days || 0],
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { color: '#f9fafb' } } }, scales: { y: { ticks: { color: '#9ca3af' } }, x: { ticks: { color: '#9ca3af' } } } }
-            });
-        }
-    } catch (e) {
-        console.error("loadStats error:", e);
-    }
-}
-
 async function loadCompanies() {
     try {
         const data = await API.call("/admin/companies", "GET");
-        if (data && Array.isArray(data)) {
-            companiesData = data;
-            renderCompaniesTable();
-            renderExpiringTable();
-        }
+        companiesData = Array.isArray(data) ? data : [];
+        renderCompaniesTable();
+        renderExpiringTable();
+        renderRecentLicensesTable();
     } catch (e) {
         console.error("loadCompanies error:", e);
+        companiesData = [];
+        renderCompaniesTable();
+        renderExpiringTable();
     }
 }
 
@@ -1357,7 +1351,7 @@ function renderCompaniesTable() {
                 <button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button>
                 <button class="btn btn-primary btn-sm" onclick="openUpgradeModal('${company.id}', '${escapeHtml(company.companyName)}', '${company.package}')">Upgrade</button>
                 <button class="btn btn-danger btn-sm" onclick="deleteCompany('${company.id}')">Delete</button>
-            </td>
+             </span>
         `;
     }
 }
@@ -1387,13 +1381,14 @@ function renderExpiringTable() {
 async function loadDevices() {
     try {
         const data = await API.call("/admin/devices", "GET");
-        if (data && Array.isArray(data)) {
-            devicesData = data;
-            renderDevicesTable();
-            renderPendingRequests();
-        }
+        devicesData = Array.isArray(data) ? data : [];
+        renderDevicesTable();
+        renderPendingRequests();
     } catch (e) {
         console.error("loadDevices error:", e);
+        devicesData = [];
+        renderDevicesTable();
+        renderPendingRequests();
     }
 }
 
@@ -1436,13 +1431,14 @@ function renderDevicesTable() {
 async function loadActivity() {
     try {
         const data = await API.call("/admin/activity?limit=500", "GET");
-        if (data && Array.isArray(data)) {
-            activityData = data;
-            renderViolationsTable();
-            renderRecentViolations();
-        }
+        activityData = Array.isArray(data) ? data : [];
+        renderViolationsTable();
+        renderRecentViolations();
     } catch (e) {
         console.error("loadActivity error:", e);
+        activityData = [];
+        renderViolationsTable();
+        renderRecentViolations();
     }
 }
 
@@ -1506,8 +1502,8 @@ function renderPendingRequests() {
             <td>${escapeHtml(device.deviceName || '-')}</span></span></td>
             <td>${formatDateTime(device.approvalRequest?.requestedAt || device.firstSeen)}</span></span></td>
             <td>
-                <button class="btn btn-success btn-sm" onclick="approveDeviceRequest('${escapeHtml(device.deviceId)}', true)">✅ Approve</button>
-                <button class="btn btn-danger btn-sm" onclick="approveDeviceRequest('${escapeHtml(device.deviceId)}', false)">❌ Reject</button>
+                <button class="btn btn-success btn-sm" onclick="approveDevice('${escapeHtml(device.deviceId)}', true)">✅ Approve</button>
+                <button class="btn btn-danger btn-sm" onclick="approveDevice('${escapeHtml(device.deviceId)}', false)">❌ Reject</button>
              </span></td>
         `;
     }
@@ -1516,12 +1512,12 @@ function renderPendingRequests() {
 async function loadInvoices() {
     try {
         const data = await API.call("/admin/invoices", "GET");
-        if (data && Array.isArray(data)) {
-            invoicesData = data;
-            renderInvoicesTable();
-        }
+        invoicesData = Array.isArray(data) ? data : [];
+        renderInvoicesTable();
     } catch (e) {
         console.error("loadInvoices error:", e);
+        invoicesData = [];
+        renderInvoicesTable();
     }
 }
 
@@ -1547,14 +1543,62 @@ function renderInvoicesTable() {
     }
 }
 
-function loadRecentLicenses() {
-    const recent = [...companiesData].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
-    renderRecentLicensesTable(recent);
+async function loadStats() {
+    try {
+        const data = await API.call("/admin/stats", "GET");
+        if (data) {
+            document.getElementById("statTotalCompanies").innerText = data.companies?.total || 0;
+            document.getElementById("statActiveCompanies").innerText = data.companies?.active || 0;
+            document.getElementById("statTotalDevices").innerText = data.devices?.total || 0;
+            document.getElementById("statActiveDevices").innerText = data.devices?.active || 0;
+            document.getElementById("statPendingDevices").innerText = data.devices?.pending || 0;
+            document.getElementById("statSuspendedDevices").innerText = (data.devices?.suspended || 0) + (data.devices?.banned || 0);
+            document.getElementById("statTotalViolations").innerText = data.violations?.total || 0;
+            document.getElementById("statMonthlyRevenue").innerHTML = formatCurrency(data.revenue?.last30Days || 0);
+            
+            if (packageChart) packageChart.destroy();
+            if (violationChart) violationChart.destroy();
+            
+            const pkgCtx = document.getElementById("packageChart").getContext("2d");
+            packageChart = new Chart(pkgCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['DEMO', 'BASIC', 'PRO'],
+                    datasets: [{
+                        data: [data.companies?.byPackage?.DEMO || 0, data.companies?.byPackage?.BASIC || 0, data.companies?.byPackage?.PRO || 0],
+                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { color: '#f9fafb' } } } }
+            });
+            
+            const violCtx = document.getElementById("violationChart").getContext("2d");
+            violationChart = new Chart(violCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
+                    datasets: [{
+                        label: 'Violations',
+                        data: [data.violations?.last7Days || 0, 0, 0, data.violations?.last30Days || 0],
+                        borderColor: '#ef4444',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { color: '#f9fafb' } } }, scales: { y: { ticks: { color: '#9ca3af' } }, x: { ticks: { color: '#9ca3af' } } } }
+            });
+        }
+    } catch (e) {
+        console.error("loadStats error:", e);
+    }
 }
 
-function renderRecentLicensesTable(recent = []) {
+function renderRecentLicensesTable() {
     const tbody = document.getElementById("recentLicensesBody");
     if (!tbody) return;
+    const recent = [...companiesData].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
     tbody.innerHTML = "";
     
     for (const company of recent.slice(0, 10)) {
@@ -1586,67 +1630,56 @@ async function generateLicense() {
     showToast("Generating license...", "info");
     
     try {
-        const data = await API.call("/generate-license", "POST", {
+        await SAFE_ACTION("/generate-license", {
             companyName, pic, phone, email, address,
             package: pkg,
             customMaxDevices: maxDevices ? parseInt(maxDevices) : null,
             notes
-        });
+        }, reloadAdminAllSafe);
         
-        if (data && data.ok) {
-            showToast(`License generated for ${companyName}`, "success");
-            await navigator.clipboard.writeText(data.licenseKey);
-            showToast(`License key copied to clipboard: ${data.licenseKey}`, "success");
-            
-            document.getElementById("genCompanyName").value = "";
-            document.getElementById("genPic").value = "";
-            document.getElementById("genPhone").value = "";
-            document.getElementById("genEmail").value = "";
-            document.getElementById("genAddress").value = "";
-            document.getElementById("genNotes").value = "";
-            document.getElementById("genMaxDevices").value = "";
-            
-            await loadCompanies();
-        } else {
-            showToast(data?.error || "Failed to generate license", "error");
-        }
+        showToast(`License generated for ${companyName}`, "success");
+        
+        document.getElementById("genCompanyName").value = "";
+        document.getElementById("genPic").value = "";
+        document.getElementById("genPhone").value = "";
+        document.getElementById("genEmail").value = "";
+        document.getElementById("genAddress").value = "";
+        document.getElementById("genNotes").value = "";
+        document.getElementById("genMaxDevices").value = "";
     } catch (e) {
         showToast(e.message, "error");
     }
 }
 
-async function approveDeviceRequest(deviceId, approve) {
-    try {
-        const data = await API.call("/approve-device", "POST", { deviceId, approve });
-        if (data && data.ok) {
-            showToast(`Device ${approve ? 'approved' : 'rejected'}`, "success");
-            await loadDevices();
-            await loadCompanies();
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+async function approveDevice(deviceId, approve) {
+    await SAFE_ACTION("/approve-device", { deviceId, approve }, reloadAdminAllSafe);
+    showToast(`Device ${approve ? 'approved' : 'rejected'}`, "success");
 }
 
 async function deleteDevice(deviceId) {
     if (!confirm("Delete this device? This action cannot be undone.")) return;
-    try {
-        await API.call("/delete-device", "POST", { deviceId, reason: "Deleted by admin" });
-        showToast("Device deleted", "success");
-        await loadDevices();
-        await loadCompanies();
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/delete-device", { deviceId, reason: "Deleted by admin" }, reloadAdminAllSafe);
+    showToast("Device deleted", "success");
 }
 
 async function deleteCompany(companyId) {
     if (!confirm("Delete this company and all its devices? This action cannot be undone.")) return;
+    await SAFE_ACTION("/delete-company", { companyId, reason: "Deleted by admin" }, reloadAdminAllSafe);
+    showToast("Company deleted", "success");
+}
+
+async function markInvoicePaid(invoiceId) {
+    if (!confirm("Mark this invoice as paid?")) return;
+    await SAFE_ACTION("/mark-invoice-paid", { invoiceId, paymentMethod: "MANUAL" }, reloadAdminAllSafe);
+    showToast("Invoice marked as paid", "success");
+}
+
+async function checkExpiredNow() {
+    showToast("Checking expired licenses...", "info");
     try {
-        await API.call("/delete-company", "POST", { companyId, reason: "Deleted by admin" });
-        showToast("Company deleted", "success");
-        await loadCompanies();
-        await loadDevices();
+        await API.call("/cron/check-expired", "GET");
+        showToast("Expired check completed", "success");
+        await reloadAdminAllSafe();
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -1659,11 +1692,9 @@ async function resetSystem() {
     showToast("Reset system...", "warning");
     
     try {
-        const res = await API.call("/admin/reset-system", "POST", { confirm: "RESET_TOTAL" });
-        if (res && res.ok) {
-            showToast("🔥 SYSTEM RESET BERHASIL", "success");
-            setTimeout(() => location.reload(), 1500);
-        }
+        await API.call("/admin/reset-system", "POST", { confirm: "RESET_TOTAL" });
+        showToast("🔥 SYSTEM RESET BERHASIL", "success");
+        setTimeout(() => location.reload(), 1500);
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -1686,22 +1717,15 @@ async function confirmRenew() {
     if (months >= 12) amount = amount * 0.85;
     if (!confirm(`Renew license for ${months} month(s) with amount ${formatCurrency(amount)}?`)) return;
     
-    try {
-        const data = await API.call("/renew-license", "POST", { 
-            companyId: currentRenewCompanyId, 
-            months, 
-            amount: Math.round(amount), 
-            paymentMethod 
-        });
-        if (data && data.ok) {
-            showToast(`License renewed for ${months} months`, "success");
-            closeModal("renewModal");
-            await loadCompanies();
-            await loadDevices();
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/renew-license", { 
+        companyId: currentRenewCompanyId, 
+        months, 
+        amount: Math.round(amount), 
+        paymentMethod 
+    }, reloadAdminAllSafe);
+    
+    showToast(`License renewed for ${months} months`, "success");
+    closeModal("renewModal");
 }
 
 let currentUpgradeCompanyId = null;
@@ -1719,21 +1743,15 @@ async function confirmUpgrade() {
     const maxDevices = document.getElementById("upgradeMaxDevices").value;
     const notes = document.getElementById("upgradeNotes").value;
     
-    try {
-        const data = await API.call("/update-package", "POST", { 
-            companyId: currentUpgradeCompanyId, 
-            newPackage, 
-            customMaxDevices: maxDevices ? parseInt(maxDevices) : null, 
-            notes 
-        });
-        if (data && data.ok) {
-            showToast(`Package upgraded to ${newPackage}`, "success");
-            closeModal("upgradeModal");
-            await loadCompanies();
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/update-package", { 
+        companyId: currentUpgradeCompanyId, 
+        newPackage, 
+        customMaxDevices: maxDevices ? parseInt(maxDevices) : null, 
+        notes 
+    }, reloadAdminAllSafe);
+    
+    showToast(`Package upgraded to ${newPackage}`, "success");
+    closeModal("upgradeModal");
 }
 
 async function viewCompanyDetails(companyId) {
@@ -1755,7 +1773,7 @@ async function viewCompanyDetails(companyId) {
                 </div>
                 <hr style="border-color: var(--border); margin: 16px 0;">
                 <h4 style="margin-bottom: 12px;">📱 Devices (${data.devices?.length || 0})</h4>
-                <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>${(data.devices || []).map(d => `<tr>:<code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td><td>${escapeHtml(d.deviceName || '-')}</span></td><td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td><td>${formatDateTime(d.lastSeen)}</span></tr>`).join('') || '<tr><td colspan="4" class="text-muted">No devices</span></tr>'}</tbody>}</table></div>
+                <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>${(data.devices || []).map(d => `<td><code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td><td>${escapeHtml(d.deviceName || '-')}</span></td><td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td><td>${formatDateTime(d.lastSeen)}</span></tr>`).join('') || '<td><td colspan="4" class="text-muted">No devices</span></tr>'}</tbody>}</table></div>
             `;
             document.getElementById("companyDetailModal").classList.add("active");
         }
@@ -1780,7 +1798,7 @@ function viewDeviceDetails(deviceId) {
         </div>
         <hr style="border-color: var(--border); margin: 16px 0;">
         <h4 style="margin-bottom: 12px;">⚠️ Violation History</h4>
-        <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<tr>:<span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</span></td><td>${formatDateTime(v.timestamp)}</span></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}</tbody>}</table></div>
+        <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<td><span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</span></td><td>${formatDateTime(v.timestamp)}</span></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}</tbody>}</table></div>
     `;
     document.getElementById("deviceDetailModal").classList.add("active");
 }
@@ -1792,13 +1810,11 @@ async function addAdminUser() {
     if (!username || !password) { showToast("Username and password required", "error"); return; }
     
     try {
-        const data = await API.call("/admin/add-user", "POST", { username, password, role });
-        if (data && data.ok) {
-            showToast("Admin user added", "success");
-            document.getElementById("newAdminUser").value = "";
-            document.getElementById("newAdminPass").value = "";
-            await loadAdminUsers();
-        }
+        await SAFE_ACTION("/admin/add-user", { username, password, role }, reloadAdminAllSafe);
+        showToast("Admin user added", "success");
+        document.getElementById("newAdminUser").value = "";
+        document.getElementById("newAdminPass").value = "";
+        await loadAdminUsers();
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -1818,15 +1834,9 @@ async function loadAdminUsers() {
 
 async function deleteAdminUser(username) {
     if (!confirm(`Delete user ${username}?`)) return;
-    try {
-        const data = await API.call("/admin/delete-user", "POST", { username });
-        if (data && data.ok) { 
-            showToast("User deleted", "success"); 
-            await loadAdminUsers(); 
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/admin/delete-user", { username }, reloadAdminAllSafe);
+    showToast("User deleted", "success");
+    await loadAdminUsers();
 }
 
 async function savePricing() {
@@ -1837,36 +1847,8 @@ async function savePricing() {
     const tax = parseInt(document.getElementById("taxRate").value);
     
     try {
-        const data = await API.call("/admin/settings", "POST", { pricing, general: { tax } });
-        if (data && data.ok) showToast("Pricing saved", "success");
-    } catch (e) {
-        showToast(e.message, "error");
-    }
-}
-
-async function markInvoicePaid(invoiceId) {
-    if (!confirm("Mark this invoice as paid?")) return;
-    try {
-        const data = await API.call("/mark-invoice-paid", "POST", { invoiceId, paymentMethod: "MANUAL" });
-        if (data && data.ok) { 
-            showToast("Invoice marked as paid", "success"); 
-            await loadInvoices(); 
-            await loadCompanies(); 
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
-}
-
-async function checkExpiredNow() {
-    showToast("Checking expired licenses...", "info");
-    try {
-        const data = await API.call("/cron/check-expired", "GET");
-        if (data && data.ok) { 
-            showToast(`Expired check completed. Updated: ${data.updated ? 'Yes' : 'No'}`, data.updated ? "warning" : "success"); 
-            await loadCompanies(); 
-            await loadDevices(); 
-        }
+        await API.call("/admin/settings", "POST", { pricing, general: { tax } });
+        showToast("Pricing saved", "success");
     } catch (e) {
         showToast(e.message, "error");
     }
@@ -1942,7 +1924,7 @@ function exportInvoicesToExcel() {
 
 function clearViolationsConfirm() {
     if (!confirm("⚠️ Clear all violation logs? This action cannot be undone.")) return;
-    showToast("Violations cleared", "success");
+    showToast("Violations cleared (simulated)", "info");
 }
 
 function openGenerateLicenseModal() {
@@ -1950,7 +1932,7 @@ function openGenerateLicenseModal() {
     if (licenseNav) licenseNav.click();
 }
 
-function refreshData() { loadAllData(); showToast("Data refreshed", "success"); }
+function refreshData() { reloadAdminAllSafe(); showToast("Data refreshed", "success"); }
 
 function closeModal(modalId) { const modal = document.getElementById(modalId); if (modal) modal.classList.remove("active"); }
 
@@ -1987,30 +1969,15 @@ function renderDeviceRequestsTable(requests) {
 
 async function approveDeviceRequestFee(requestId) {
     if (!confirm("Approve this device request? An invoice will be generated for the client.")) return;
-    try {
-        const data = await API.call("/approve-device-request", "POST", { requestId, approve: true });
-        if (data && data.ok) {
-            showToast(`Request approved. Invoice: ${data.invoiceId} - Amount: Rp ${data.amount.toLocaleString()}`, "success");
-            await loadDeviceRequests();
-            await loadInvoices();
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/approve-device-request", { requestId, approve: true }, reloadAdminAllSafe);
+    showToast("Request approved. Invoice generated.", "success");
 }
 
 async function rejectDeviceRequest(requestId) {
     const reason = prompt("Reason for rejection:");
     if (reason === null) return;
-    try {
-        const data = await API.call("/approve-device-request", "POST", { requestId, approve: false, notes: reason });
-        if (data && data.ok) { 
-            showToast("Request rejected", "success"); 
-            await loadDeviceRequests(); 
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/approve-device-request", { requestId, approve: false, notes: reason }, reloadAdminAllSafe);
+    showToast("Request rejected", "success");
 }
 
 function switchTab(tabId) {
@@ -2049,21 +2016,20 @@ document.getElementById("violationTypeFilter")?.addEventListener("change", () =>
 document.getElementById("invoiceStatusFilter")?.addEventListener("change", () => renderInvoicesTable());
 document.getElementById("requestStatusFilter")?.addEventListener("change", () => loadDeviceRequests());
 
-function startRefresh() { if (refreshInterval) clearInterval(refreshInterval); refreshInterval = setInterval(loadAllData, 30000); }
+function startRefresh() { if (refreshInterval) clearInterval(refreshInterval); refreshInterval = setInterval(() => reloadAdminAllSafe(), 30000); }
 
 async function init() {
-    const savedToken = localStorage.getItem("vms_admin_token");
-    const savedUser = localStorage.getItem("vms_admin_user");
-    const savedRole = localStorage.getItem("vms_admin_role");
+    const savedToken = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("username");
+    const savedRole = localStorage.getItem("role");
     if (savedToken && savedUser) {
-        currentUser = { username: savedUser, role: savedRole || "ADMIN" };
         document.getElementById("loginOverlay").classList.add("hidden");
         document.getElementById("topUsername").innerText = savedUser;
         document.getElementById("sidebarUsername").innerText = savedUser;
         document.getElementById("topRole").innerText = savedRole || "ADMIN";
         document.getElementById("sidebarRole").innerText = savedRole || "ADMIN";
         startRefresh();
-        loadAllData();
+        await reloadAdminAllSafe();
     }
     setInterval(() => { const span = document.getElementById("serverTime"); if (span) span.innerHTML = `Server Time: ${new Date().toLocaleString()}`; }, 1000);
 }

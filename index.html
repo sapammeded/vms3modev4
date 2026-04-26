@@ -274,185 +274,233 @@
 </div>
 
 <script>
-const WORKER_URL = "https://vms3modev4.sapammeded.workers.dev";
+// ================= EXECUTION CONTROL CORE =================
+
+// Queue untuk memastikan semua action jalan berurutan
+let ACTION_QUEUE = Promise.resolve();
+
+// Lock untuk mencegah double click / spam
+let ACTION_LOCK = false;
+
+// Enqueue (biar ga parallel)
+function enqueueAction(fn) {
+    ACTION_QUEUE = ACTION_QUEUE
+        .then(() => fn())
+        .catch(err => {
+            console.error('ACTION ERROR:', err);
+        });
+
+    return ACTION_QUEUE;
+}
+
+// Guard (anti double trigger)
+async function guardedAction(fn) {
+    if (ACTION_LOCK) return;
+    ACTION_LOCK = true;
+
+    try {
+        await fn();
+    } finally {
+        setTimeout(() => {
+            ACTION_LOCK = false;
+        }, 300);
+    }
+}
+
+// Wrapper FINAL (ini yang lo pakai)
+async function SAFE_ACTION(apiPath, body, reloadFn) {
+    return guardedAction(() =>
+        enqueueAction(async () => {
+            await API.call(apiPath, 'POST', body);
+            if (reloadFn) {
+                await reloadFn();
+            }
+        })
+    );
+}
+
+// ================= KONFIGURASI =================
 let currentLicense = null;
 let currentPackage = "DEMO";
 let currentLimits = { maxVisitors: 5, maxDevices: 2, maxSites: 3, canRenameSites: false, canAddSites: false };
-let currentSite = localStorage.getItem("vms_current_site") || "SITE_A";
-let visitorsData = {};
+let currentSite = localStorage.getItem("currentSite") || "SITE_A";
+let visitorsData = [];
 let logsData = [];
 let syncInterval = null;
 let chartInstances = {};
+let CORE_LOCK = false;
 
-function showToast(message, type = "info") {
-    const toast = document.createElement("div");
-    toast.className = `toast-msg ${type}`;
-    toast.innerText = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
-}
-
-function generateReg() {
-    return "REG" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
-}
-
-async function upgradeLicense(licenseKey) {
-    showToast("Memvalidasi license...", "info");
+// ================= SAFE RELOAD ENGINE =================
+async function reloadAllCoreSafe() {
+    if (CORE_LOCK) return;
+    CORE_LOCK = true;
     
+    await Promise.all([
+        loadVisitors(),
+        loadLogs(),
+        loadStats()
+    ]);
+    
+    setTimeout(() => CORE_LOCK = false, 300);
+}
+
+// ================= LOAD FUNCTIONS =================
+async function loadVisitors() {
     try {
-        const result = await API.call("/validate-license", "POST", {
-            licenseKey: licenseKey,
-            deviceId: localStorage.getItem("vms_device_id") || "web_" + Date.now(),
-            deviceName: "Web Dashboard"
-        });
-        
-        if (result && result.ok) {
-            currentLicense = licenseKey;
-            currentPackage = result.license?.package || "DEMO";
-            currentLimits = result.limits || getPackageLimits(currentPackage);
-            
-            localStorage.setItem("vms_license_key", licenseKey);
-            localStorage.setItem("vms_package", currentPackage);
-            
-            showToast(`✅ License aktif: ${currentPackage}`, "success");
-            
-            await syncFromCloud();
-            
-            renderDashboard();
-            renderVisitorTable();
-            renderLogTable();
-            loadSites();
-            
-            document.getElementById("licenseUpgradeCard").style.display = "none";
+        if (!currentLicense) {
+            const cachedVisitors = localStorage.getItem("visitors_demo");
+            visitorsData = cachedVisitors ? JSON.parse(cachedVisitors) : [];
         } else {
-            showToast(result?.error || "License tidak valid", "error");
+            const data = await API.call("/visitors", "GET");
+            visitorsData = data?.visitors ? Object.values(data.visitors) : [];
         }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
-}
-
-function getPackageLimits(pkg) {
-    switch(pkg) {
-        case "DEMO": return { maxVisitors: 5, maxDevices: 2, maxSites: 3, canRenameSites: false, canAddSites: false };
-        case "BASIC": return { maxVisitors: 150, maxDevices: 10, maxSites: Infinity, canRenameSites: true, canAddSites: false };
-        case "PRO": return { maxVisitors: Infinity, maxDevices: Infinity, maxSites: Infinity, canRenameSites: true, canAddSites: true };
-        default: return { maxVisitors: 5, maxDevices: 2, maxSites: 3, canRenameSites: false, canAddSites: false };
-    }
-}
-
-async function syncFromCloud() {
-    if (!currentLicense) {
-        const cachedVisitors = localStorage.getItem("vms_visitors_demo");
-        const cachedLogs = localStorage.getItem("vms_logs_demo");
-        if (cachedVisitors) visitorsData = JSON.parse(cachedVisitors);
-        if (cachedLogs) logsData = JSON.parse(cachedLogs);
-        return { visitors: visitorsData, logs: logsData };
-    }
-    
-    try {
-        const result = await API.call("/visitors", "GET");
-        if (result && result.ok) {
-            visitorsData = result.visitors || {};
-            logsData = result.logs || [];
-            
-            localStorage.setItem("vms_visitors_cache", JSON.stringify(visitorsData));
-            localStorage.setItem("vms_logs_cache", JSON.stringify(logsData));
-            
-            return { visitors: visitorsData, logs: logsData };
-        }
-    } catch (e) {
-        console.warn("syncFromCloud error:", e);
-    }
-    
-    const cachedVisitors = localStorage.getItem("vms_visitors_cache");
-    const cachedLogs = localStorage.getItem("vms_logs_cache");
-    if (cachedVisitors && cachedLogs) {
-        visitorsData = JSON.parse(cachedVisitors);
-        logsData = JSON.parse(cachedLogs);
-        return { visitors: visitorsData, logs: logsData };
-    }
-    
-    return { visitors: {}, logs: [] };
-}
-
-async function saveToCloud(data) {
-    if (!currentLicense) {
-        localStorage.setItem("vms_visitors_demo", JSON.stringify(visitorsData));
-        localStorage.setItem("vms_logs_demo", JSON.stringify(logsData));
-        return true;
-    }
-    
-    try {
-        const result = await API.call("/save", "POST", data);
-        return result && result.ok;
-    } catch (e) {
-        console.warn("saveToCloud error:", e);
-        return false;
-    }
-}
-
-function startAutoSync() {
-    if (syncInterval) clearInterval(syncInterval);
-    syncInterval = setInterval(async () => {
-        await syncFromCloud();
-        renderDashboard();
         renderVisitorTable();
-        renderLogTable();
-    }, 5000);
+        return visitorsData;
+    } catch (e) {
+        console.warn("loadVisitors error:", e);
+        visitorsData = [];
+        renderVisitorTable();
+        return [];
+    }
 }
 
-async function renderDashboard() {
-    const visitorsList = Object.values(visitorsData);
-    const activeInside = visitorsList.filter(v => v.currentStatus === "IN").length;
-    const today = new Date().toDateString();
-    const todayCheckins = logsData.filter(l => new Date(l.timestamp || l.time).toDateString() === today && (l.action === "CHECK_IN" || l.type === "CHECK_IN")).length;
-    
+async function loadLogs() {
+    try {
+        if (!currentLicense) {
+            const cachedLogs = localStorage.getItem("logs_demo");
+            logsData = cachedLogs ? JSON.parse(cachedLogs) : [];
+        } else {
+            const data = await API.call("/visitors", "GET");
+            logsData = data?.logs || [];
+        }
+        renderLogTable();
+        return logsData;
+    } catch (e) {
+        console.warn("loadLogs error:", e);
+        logsData = [];
+        renderLogTable();
+        return [];
+    }
+}
+
+async function loadStats() {
+    try {
+        const visitorsCount = visitorsData.length;
+        const activeInside = visitorsData.filter(v => v.currentStatus === "IN").length;
+        const today = new Date().toDateString();
+        const todayCheckins = logsData.filter(l => new Date(l.timestamp || l.time).toDateString() === today && (l.action === "CHECK_IN" || l.type === "CHECK_IN")).length;
+        
+        renderStats(visitorsCount, activeInside, todayCheckins);
+        
+        const categories = { UMUM: 0, VIP: 0, VVIP: 0 };
+        visitorsData.forEach(v => { categories[v.kategori || "UMUM"]++; });
+        
+        if (chartInstances.category) chartInstances.category.destroy();
+        const catCtx = document.getElementById("categoryChart")?.getContext("2d");
+        if (catCtx) {
+            chartInstances.category = new Chart(catCtx, {
+                type: "pie",
+                data: { labels: ["UMUM", "VIP", "VVIP"], datasets: [{ data: [categories.UMUM, categories.VIP, categories.VVIP], backgroundColor: ["#1f4e4a", "#94a3b8", "#fbbf24"] }] }
+            });
+        }
+        
+        const maxVisitors = currentLimits?.maxVisitors || 5;
+        const percent = (visitorsData.length / maxVisitors) * 100;
+        const progressBar = document.getElementById("visitorProgressBar");
+        const limitText = document.getElementById("visitorLimitText");
+        
+        if (maxVisitors === Infinity) {
+            limitText.innerText = `${visitorsData.length} / Unlimited ✨`;
+            progressBar.style.width = "0%";
+        } else {
+            limitText.innerText = `${visitorsData.length} / ${maxVisitors} (${currentPackage})`;
+            progressBar.style.width = Math.min(percent, 100) + "%";
+            if (percent >= 90) progressBar.className = "progress-bar-fill critical";
+            else if (percent >= 70) progressBar.className = "progress-bar-fill warning";
+            else progressBar.className = "progress-bar-fill";
+            
+            if (percent >= 90 && maxVisitors !== Infinity) {
+                document.getElementById("limitWarning").style.display = "flex";
+                document.getElementById("limitWarningText").innerHTML = `⚠️ Hampir mencapai limit ${currentPackage} (${visitorsData.length}/${maxVisitors}). Upgrade untuk lanjut!`;
+            } else {
+                document.getElementById("limitWarning").style.display = "none";
+            }
+        }
+    } catch (e) {
+        console.warn("loadStats error:", e);
+    }
+}
+
+function renderStats(totalVisitors, activeInside, todayCheckins) {
     document.getElementById("statsWidget").innerHTML = `
-        <div class="stat-card"><h4>Total Visitors</h4><div class="stat-number">${visitorsList.length}</div></div>
+        <div class="stat-card"><h4>Total Visitors</h4><div class="stat-number">${totalVisitors}</div></div>
         <div class="stat-card"><h4>Active Inside</h4><div class="stat-number">${activeInside}</div></div>
         <div class="stat-card"><h4>Check-ins Today</h4><div class="stat-number">${todayCheckins}</div></div>
     `;
-    
-    const categories = { UMUM: 0, VIP: 0, VVIP: 0 };
-    visitorsList.forEach(v => { categories[v.kategori || "UMUM"]++; });
-    
-    if (chartInstances.category) chartInstances.category.destroy();
-    const catCtx = document.getElementById("categoryChart")?.getContext("2d");
-    if (catCtx) {
-        chartInstances.category = new Chart(catCtx, {
-            type: "pie",
-            data: { labels: ["UMUM", "VIP", "VVIP"], datasets: [{ data: [categories.UMUM, categories.VIP, categories.VVIP], backgroundColor: ["#1f4e4a", "#94a3b8", "#fbbf24"] }] }
-        });
-    }
-    
-    const maxVisitors = currentLimits?.maxVisitors || 5;
-    const percent = (visitorsList.length / maxVisitors) * 100;
-    const progressBar = document.getElementById("visitorProgressBar");
-    const limitText = document.getElementById("visitorLimitText");
-    
-    if (maxVisitors === Infinity) {
-        limitText.innerText = `${visitorsList.length} / Unlimited ✨`;
-        progressBar.style.width = "0%";
-    } else {
-        limitText.innerText = `${visitorsList.length} / ${maxVisitors} (${currentPackage})`;
-        progressBar.style.width = Math.min(percent, 100) + "%";
-        if (percent >= 90) progressBar.className = "progress-bar-fill critical";
-        else if (percent >= 70) progressBar.className = "progress-bar-fill warning";
-        else progressBar.className = "progress-bar-fill";
-        
-        if (percent >= 90 && maxVisitors !== Infinity) {
-            document.getElementById("limitWarning").style.display = "flex";
-            document.getElementById("limitWarningText").innerHTML = `⚠️ Hampir mencapai limit ${currentPackage} (${visitorsList.length}/${maxVisitors}). Upgrade untuk lanjut!`;
-        } else {
-            document.getElementById("limitWarning").style.display = "none";
-        }
-    }
 }
 
-async function registerVisitor(visitorData, isWalkin = false) {
+function renderVisitorTable() {
+    const search = document.getElementById("searchVisitor")?.value.toLowerCase() || "";
+    
+    const filtered = visitorsData.filter(v => 
+        v.nama?.toLowerCase().includes(search) || (v.reg || "").toLowerCase().includes(search)
+    );
+    
+    const tbody = document.getElementById("visitorTableBody");
+    if (!tbody) return;
+    
+    tbody.innerHTML = "";
+    filtered.forEach(v => {
+        const expDate = new Date(v.expDate);
+        const isExpired = expDate < new Date();
+        const reg = v.reg || "REG" + Date.now();
+        const row = tbody.insertRow();
+        row.insertCell(0).innerText = reg;
+        row.insertCell(1).innerText = v.nama || "-";
+        row.insertCell(2).innerText = v.perusahaan || "-";
+        row.insertCell(3).innerHTML = `<span class="badge badge-${v.kategori}">${v.kategori || "UMUM"}</span>`;
+        row.insertCell(4).innerHTML = `<span class="badge badge-${v.currentStatus === "IN" ? "IN" : "OUT"}">${v.currentStatus === "IN" ? "IN" : "OUT"}</span>`;
+        row.insertCell(5).innerHTML = isExpired ? '<span style="color: red;">Expired</span>' : (v.expDate || "-");
+        row.insertCell(6).innerHTML = `
+            <button class="btn-checkin" data-reg="${reg}" style="background: #10b981; padding: 6px 12px; font-size: 0.7rem;">IN</button>
+            <button class="btn-checkout" data-reg="${reg}" style="background: #ef4444; padding: 6px 12px; font-size: 0.7rem; margin-left: 5px;">OUT</button>
+        `;
+    });
+    
+    document.querySelectorAll(".btn-checkin").forEach(btn => {
+        btn.onclick = () => handleCheck(btn.dataset.reg, "CHECK_IN");
+    });
+    document.querySelectorAll(".btn-checkout").forEach(btn => {
+        btn.onclick = () => handleCheck(btn.dataset.reg, "CHECK_OUT");
+    });
+}
+
+function renderLogTable() {
+    const search = document.getElementById("searchLog")?.value.toLowerCase() || "";
+    
+    const filtered = logsData.filter(l => 
+        l.name?.toLowerCase().includes(search) || l.reg?.toLowerCase().includes(search)
+    ).slice(0, 200);
+    
+    const tbody = document.getElementById("logTableBody");
+    if (!tbody) return;
+    
+    tbody.innerHTML = "";
+    filtered.forEach(l => {
+        const row = tbody.insertRow();
+        row.insertCell(0).innerText = new Date(l.timestamp || l.time).toLocaleString();
+        row.insertCell(1).innerText = l.reg || "-";
+        row.insertCell(2).innerText = l.name || "-";
+        row.insertCell(3).innerText = l.company || "-";
+        row.insertCell(4).innerHTML = `<span class="badge ${l.action === "CHECK_IN" ? "badge-IN" : "badge-OUT"}">${l.action || l.type || "-"}</span>`;
+        row.insertCell(5).innerText = l.site || "-";
+    });
+}
+
+// ================= ACTIONS WITH SAFE_ACTION =================
+async function handleRegister(visitorData, isWalkin = false) {
     const maxVisitors = currentLimits?.maxVisitors || 5;
-    const currentCount = Object.keys(visitorsData).length;
+    const currentCount = visitorsData.length;
     if (currentCount >= maxVisitors) {
         showToast(`Limit ${currentPackage} tercapai (${maxVisitors} visitor). Upgrade untuk lanjut!`, "error");
         return false;
@@ -460,6 +508,7 @@ async function registerVisitor(visitorData, isWalkin = false) {
     
     const reg = generateReg();
     const finalData = {
+        reg: reg,
         nama: visitorData.nama,
         perusahaan: visitorData.perusahaan,
         kategori: visitorData.kategori || "UMUM",
@@ -474,45 +523,85 @@ async function registerVisitor(visitorData, isWalkin = false) {
         registeredAt: Date.now()
     };
     
-    if (currentLicense) {
-        try {
-            const result = await API.call("/register", "POST", { 
-                reg, 
-                visitorData: finalData, 
-                deviceId: "web", 
-                siteId: currentSite 
-            });
-            if (!result || !result.ok) {
-                showToast("Gagal register", "error");
-                return false;
-            }
-        } catch (e) {
-            showToast(e.message, "error");
-            return false;
-        }
-    } else {
-        visitorsData[reg] = finalData;
-        logsData.unshift({
-            id: Date.now(),
-            reg, name: finalData.nama, company: finalData.perusahaan,
-            category: finalData.kategori, action: "REGISTER", timestamp: Date.now(),
-            site: currentSite, deviceId: "web"
+    try {
+        await API.call("/register", "POST", { 
+            reg: reg, 
+            visitorData: finalData, 
+            deviceId: "web", 
+            siteId: currentSite 
         });
-        localStorage.setItem("vms_visitors_demo", JSON.stringify(visitorsData));
-        localStorage.setItem("vms_logs_demo", JSON.stringify(logsData));
+        
+        showToast(`✅ ${finalData.nama} berhasil terdaftar (${reg})`, "success");
+        
+        await reloadAllCoreSafe();
+        
+        const qrPayload = JSON.stringify({ reg, licenseKey: currentLicense || "DEMO", exp: finalData.expDate });
+        const qrCanvas = document.createElement("canvas");
+        await QRCode.toCanvas(qrCanvas, qrPayload, { width: 200 });
+        showQRModal(reg, finalData.nama, qrCanvas.toDataURL());
+        return true;
+    } catch (e) {
+        showToast(e.message, "error");
+        return false;
     }
+}
+
+async function handleCheck(reg, action) {
+    await SAFE_ACTION("/checkin", { reg, action, deviceId: "web", siteId: currentSite }, reloadAllCoreSafe);
+    showToast(`${action === "CHECK_IN" ? "✅ Check-in" : "✅ Check-out"} berhasil`, "success");
+}
+
+async function upgradeLicense(licenseKey) {
+    showToast("Memvalidasi license...", "info");
     
-    showToast(`✅ ${finalData.nama} berhasil terdaftar (${reg})`, "success");
-    await syncFromCloud();
-    renderVisitorTable();
-    renderDashboard();
-    renderLogTable();
-    
-    const qrPayload = JSON.stringify({ reg, licenseKey: currentLicense || "DEMO", exp: finalData.expDate });
-    const qrCanvas = document.createElement("canvas");
-    await QRCode.toCanvas(qrCanvas, qrPayload, { width: 200 });
-    showQRModal(reg, finalData.nama, qrCanvas.toDataURL());
-    return true;
+    try {
+        const result = await API.call("/validate-license", "POST", {
+            licenseKey: licenseKey,
+            deviceId: localStorage.getItem("deviceId") || "web_" + Date.now(),
+            deviceName: "Web Dashboard"
+        });
+        
+        if (result) {
+            currentLicense = licenseKey;
+            currentPackage = result.license?.package || "DEMO";
+            currentLimits = result.limits || getPackageLimits(currentPackage);
+            
+            localStorage.setItem("licenseKey", licenseKey);
+            localStorage.setItem("package", currentPackage);
+            
+            showToast(`✅ License aktif: ${currentPackage}`, "success");
+            
+            await reloadAllCoreSafe();
+            loadSites();
+            
+            document.getElementById("licenseUpgradeCard").style.display = "none";
+        } else {
+            showToast(result?.error || "License tidak valid", "error");
+        }
+    } catch (e) {
+        showToast(e.message, "error");
+    }
+}
+
+function generateReg() {
+    return "REG" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+}
+
+function getPackageLimits(pkg) {
+    switch(pkg) {
+        case "DEMO": return { maxVisitors: 5, maxDevices: 2, maxSites: 3, canRenameSites: false, canAddSites: false };
+        case "BASIC": return { maxVisitors: 150, maxDevices: 10, maxSites: Infinity, canRenameSites: true, canAddSites: false };
+        case "PRO": return { maxVisitors: Infinity, maxDevices: Infinity, maxSites: Infinity, canRenameSites: true, canAddSites: true };
+        default: return { maxVisitors: 5, maxDevices: 2, maxSites: 3, canRenameSites: false, canAddSites: false };
+    }
+}
+
+function showToast(message, type = "info") {
+    const toast = document.createElement("div");
+    toast.className = `toast-msg ${type}`;
+    toast.innerText = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
 }
 
 function showQRModal(reg, name, qrDataUrl) {
@@ -552,7 +641,7 @@ async function walkinRegister() {
         foto = reader;
     }
     
-    await registerVisitor({
+    await handleRegister({
         nama: name, perusahaan: company, pic: pic, dept: "Umum",
         kategori: "UMUM", tujuan: "Walk-in Visit",
         expDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
@@ -565,131 +654,19 @@ async function walkinRegister() {
     document.getElementById("walkinPhotoFile").value = "";
 }
 
-async function processCheck(reg, action) {
-    if (currentLicense) {
-        try {
-            const result = await API.call("/checkin", "POST", {
-                reg, action, deviceId: "web", siteId: currentSite
-            });
-            if (result && result.ok) {
-                showToast(`${action === "CHECK_IN" ? "✅ Check-in" : "✅ Check-out"} ${result.name} berhasil`, "success");
-                await syncFromCloud();
-            } else {
-                showToast(result?.error || "Gagal proses check", "error");
-                return;
-            }
-        } catch (e) {
-            showToast(e.message, "error");
-            return;
-        }
-    } else {
-        const visitor = visitorsData[reg];
-        if (!visitor) { showToast("Visitor tidak ditemukan", "error"); return; }
-        
-        if (action === "CHECK_IN" && visitor.currentStatus !== "IN") {
-            visitor.currentStatus = "IN";
-            if (!visitor.sessions) visitor.sessions = [];
-            visitor.sessions.push({ checkIn: Date.now(), checkOut: null });
-        } else if (action === "CHECK_OUT" && visitor.currentStatus !== "OUT") {
-            visitor.currentStatus = "OUT";
-            for (let i = visitor.sessions.length - 1; i >= 0; i--) {
-                if (!visitor.sessions[i].checkOut) {
-                    visitor.sessions[i].checkOut = Date.now();
-                    break;
-                }
-            }
-        } else {
-            showToast(`Visitor sudah ${action === "CHECK_IN" ? "check-in" : "check-out"}`, "warning");
-            return;
-        }
-        
-        visitorsData[reg] = visitor;
-        logsData.unshift({
-            id: Date.now(), reg, name: visitor.nama, company: visitor.perusahaan,
-            category: visitor.kategori, action: action, timestamp: Date.now(),
-            site: currentSite, deviceId: "web"
-        });
-        localStorage.setItem("vms_visitors_demo", JSON.stringify(visitorsData));
-        localStorage.setItem("vms_logs_demo", JSON.stringify(logsData));
-        showToast(`${action === "CHECK_IN" ? "✅ Check-in" : "✅ Check-out"} ${visitor.nama} berhasil`, "success");
-    }
-    
-    renderVisitorTable();
-    renderDashboard();
-    renderLogTable();
-}
-
-async function renderVisitorTable() {
-    await syncFromCloud();
-    const search = document.getElementById("searchVisitor")?.value.toLowerCase() || "";
-    
-    const filtered = Object.entries(visitorsData).filter(([reg, v]) => 
-        v.nama?.toLowerCase().includes(search) || reg.toLowerCase().includes(search)
-    );
-    
-    const tbody = document.getElementById("visitorTableBody");
-    if (!tbody) return;
-    
-    tbody.innerHTML = "";
-    filtered.forEach(([reg, v]) => {
-        const expDate = new Date(v.expDate);
-        const isExpired = expDate < new Date();
-        const row = tbody.insertRow();
-        row.insertCell(0).innerText = reg;
-        row.insertCell(1).innerText = v.nama || "-";
-        row.insertCell(2).innerText = v.perusahaan || "-";
-        row.insertCell(3).innerHTML = `<span class="badge badge-${v.kategori}">${v.kategori || "UMUM"}</span>`;
-        row.insertCell(4).innerHTML = `<span class="badge badge-${v.currentStatus === "IN" ? "IN" : "OUT"}">${v.currentStatus === "IN" ? "IN" : "OUT"}</span>`;
-        row.insertCell(5).innerHTML = isExpired ? '<span style="color: red;">Expired</span>' : (v.expDate || "-");
-        row.insertCell(6).innerHTML = `
-            <button class="btn-checkin" data-reg="${reg}" style="background: #10b981; padding: 6px 12px; font-size: 0.7rem;">IN</button>
-            <button class="btn-checkout" data-reg="${reg}" style="background: #ef4444; padding: 6px 12px; font-size: 0.7rem; margin-left: 5px;">OUT</button>
-        `;
-    });
-    
-    document.querySelectorAll(".btn-checkin").forEach(btn => {
-        btn.onclick = () => processCheck(btn.dataset.reg, "CHECK_IN");
-    });
-    document.querySelectorAll(".btn-checkout").forEach(btn => {
-        btn.onclick = () => processCheck(btn.dataset.reg, "CHECK_OUT");
-    });
-}
-
-async function renderLogTable() {
-    await syncFromCloud();
-    const search = document.getElementById("searchLog")?.value.toLowerCase() || "";
-    
-    const filtered = logsData.filter(l => 
-        l.name?.toLowerCase().includes(search) || l.reg?.toLowerCase().includes(search)
-    ).slice(0, 200);
-    
-    const tbody = document.getElementById("logTableBody");
-    if (!tbody) return;
-    
-    tbody.innerHTML = "";
-    filtered.forEach(l => {
-        const row = tbody.insertRow();
-        row.insertCell(0).innerText = new Date(l.timestamp || l.time).toLocaleString();
-        row.insertCell(1).innerText = l.reg || "-";
-        row.insertCell(2).innerText = l.name || "-";
-        row.insertCell(3).innerText = l.company || "-";
-        row.insertCell(4).innerHTML = `<span class="badge ${l.action === "CHECK_IN" ? "badge-IN" : "badge-OUT"}">${l.action || l.type || "-"}</span>`;
-        row.insertCell(5).innerText = l.site || "-";
-    });
-}
-
+// ================= SITE MANAGEMENT =================
 async function loadSites() {
     let sites = { SITE_A: "SITE A", SITE_B: "SITE B", SITE_C: "SITE C", customSites: {} };
     
     if (currentLicense) {
         try {
             const result = await API.call("/sites", "GET");
-            if (result && result.ok) sites = result.sites;
+            if (result && result.sites) sites = result.sites;
         } catch (e) {
             console.warn("loadSites error:", e);
         }
     } else {
-        const cached = localStorage.getItem("vms_sites_demo");
+        const cached = localStorage.getItem("sites_demo");
         if (cached) sites = JSON.parse(cached);
     }
     
@@ -761,9 +738,8 @@ function updateSiteSelector(sites) {
     selector.value = currentSite;
     selector.onchange = (e) => {
         currentSite = e.target.value;
-        localStorage.setItem("vms_current_site", currentSite);
-        renderVisitorTable();
-        renderLogTable();
+        localStorage.setItem("currentSite", currentSite);
+        reloadAllCoreSafe();
         showToast(`Site berubah ke ${currentSite}`, "success");
     };
 }
@@ -788,14 +764,13 @@ async function saveSites() {
     
     if (currentLicense) {
         try {
-            const result = await API.call("/sites", "POST", { sites, customSites });
-            if (result && result.ok) showToast("Site names saved!", "success");
-            else showToast("Gagal menyimpan", "error");
+            await API.call("/sites", "POST", { sites, customSites });
+            showToast("Site names saved!", "success");
         } catch (e) {
             showToast(e.message, "error");
         }
     } else {
-        localStorage.setItem("vms_sites_demo", JSON.stringify({ ...sites, customSites }));
+        localStorage.setItem("sites_demo", JSON.stringify({ ...sites, customSites }));
         showToast("Site names saved locally!", "success");
     }
     await loadSites();
@@ -815,18 +790,17 @@ async function addNewSite() {
         const customSites = {};
         customSites[newKey] = newDisplay;
         try {
-            const result = await API.call("/sites", "POST", { customSites });
-            if (result && result.ok) showToast(`Site ${newDisplay} ditambahkan`, "success");
-            else showToast("Gagal menambah", "error");
+            await API.call("/sites", "POST", { customSites });
+            showToast(`Site ${newDisplay} ditambahkan`, "success");
         } catch (e) {
             showToast(e.message, "error");
         }
     } else {
-        const cached = localStorage.getItem("vms_sites_demo");
+        const cached = localStorage.getItem("sites_demo");
         const sites = cached ? JSON.parse(cached) : { SITE_A: "SITE A", SITE_B: "SITE B", SITE_C: "SITE C", customSites: {} };
         if (!sites.customSites) sites.customSites = {};
         sites.customSites[newKey] = newDisplay;
-        localStorage.setItem("vms_sites_demo", JSON.stringify(sites));
+        localStorage.setItem("sites_demo", JSON.stringify(sites));
         showToast(`Site ${newDisplay} ditambahkan (local)`, "success");
     }
     
@@ -835,37 +809,7 @@ async function addNewSite() {
     await loadSites();
 }
 
-function exportToExcel() {
-    const data = Object.entries(visitorsData).map(([reg, v]) => ({
-        "No. Registrasi": reg,
-        "Nama": v.nama || "-",
-        "Perusahaan": v.perusahaan || "-",
-        "Kategori": v.kategori || "-",
-        "Tujuan": v.tujuan || "-",
-        "PIC": v.pic || "-",
-        "Departemen": v.dept || "-",
-        "Status": v.currentStatus === "IN" ? "Sedang di dalam" : "Sudah keluar",
-        "Tanggal Kadaluarsa": v.expDate || "-"
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "VMS_Visitors");
-    XLSX.writeFile(wb, `VMS_Export_${new Date().toISOString().slice(0, 19)}.xlsx`);
-    showToast("Export Excel berhasil", "success");
-}
-
-function backupData() {
-    const data = { visitors: visitorsData, logs: logsData, exportedAt: Date.now() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vms_backup_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("Backup berhasil", "success");
-}
-
+// ================= SCANNER =================
 let html5QrScanner = null;
 let isScanning = false;
 
@@ -885,7 +829,7 @@ async function startScanner() {
                     const qrData = JSON.parse(decodedText);
                     if (qrData.reg) {
                         const mode = document.getElementById("scanMode").value;
-                        await processCheck(qrData.reg, mode);
+                        await handleCheck(qrData.reg, mode);
                     } else showToast("QR tidak valid", "error");
                 } catch(e) { showToast("QR tidak dikenali", "error"); }
                 setTimeout(() => { isScanning = false; }, 2000);
@@ -924,11 +868,44 @@ function switchTab(tabId) {
     if (tabId === "sites") loadSites();
 }
 
+function exportToExcel() {
+    const data = visitorsData.map(v => ({
+        "No. Registrasi": v.reg || "-",
+        "Nama": v.nama || "-",
+        "Perusahaan": v.perusahaan || "-",
+        "Kategori": v.kategori || "-",
+        "Tujuan": v.tujuan || "-",
+        "PIC": v.pic || "-",
+        "Departemen": v.dept || "-",
+        "Status": v.currentStatus === "IN" ? "Sedang di dalam" : "Sudah keluar",
+        "Tanggal Kadaluarsa": v.expDate || "-"
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "VMS_Visitors");
+    XLSX.writeFile(wb, `VMS_Export_${new Date().toISOString().slice(0, 19)}.xlsx`);
+    showToast("Export Excel berhasil", "success");
+}
+
+function backupData() {
+    const data = { visitors: visitorsData, logs: logsData, exportedAt: Date.now() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vms_backup_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Backup berhasil", "success");
+}
+
+// ================= EVENT LISTENERS =================
 document.getElementById("upgradeLicenseBtn").onclick = () => {
     const key = document.getElementById("licenseKeyInput").value.trim();
     if (key) upgradeLicense(key);
     else showToast("Masukkan license key", "warning");
 };
+
 document.getElementById("generateQRBtn").onclick = async () => {
     const nama = document.getElementById("regName").value.trim();
     const perusahaan = document.getElementById("regCompany").value.trim();
@@ -947,7 +924,7 @@ document.getElementById("generateQRBtn").onclick = async () => {
         foto = reader;
     }
     
-    await registerVisitor({ nama, perusahaan, pic, dept, kategori, tujuan, expDate, foto });
+    await handleRegister({ nama, perusahaan, pic, dept, kategori, tujuan, expDate, foto });
     
     document.getElementById("regName").value = "";
     document.getElementById("regCompany").value = "";
@@ -965,11 +942,11 @@ document.getElementById("manualProcessBtn").onclick = async () => {
     const reg = document.getElementById("manualReg").value.trim();
     if (!reg) { showToast("Masukkan REG", "warning"); return; }
     const mode = document.getElementById("scanMode").value;
-    await processCheck(reg, mode);
+    await handleCheck(reg, mode);
     document.getElementById("manualReg").value = "";
 };
-document.getElementById("refreshVisitorsBtn").onclick = () => { syncFromCloud(); renderVisitorTable(); };
-document.getElementById("refreshLogsBtn").onclick = () => { syncFromCloud(); renderLogTable(); };
+document.getElementById("refreshVisitorsBtn").onclick = () => { reloadAllCoreSafe(); };
+document.getElementById("refreshLogsBtn").onclick = () => { reloadAllCoreSafe(); };
 document.getElementById("exportExcelBtn").onclick = exportToExcel;
 document.getElementById("backupDataBtn").onclick = backupData;
 document.getElementById("addSiteBtn").onclick = addNewSite;
@@ -1001,7 +978,7 @@ document.getElementById("uploadQrFile").onchange = async (e) => {
         const qrData = JSON.parse(decoded);
         if (qrData.reg) {
             const mode = document.getElementById("scanMode").value;
-            await processCheck(qrData.reg, mode);
+            await handleCheck(qrData.reg, mode);
         } else showToast("QR tidak valid", "error");
     } catch(err) { showToast("Gagal baca QR", "error"); }
     await scanner.clear();
@@ -1020,19 +997,20 @@ document.getElementById("overlay").onclick = () => {
     document.getElementById("overlay").style.display = "none";
 };
 
+function startAutoRefresh() {
+    if (syncInterval) clearInterval(syncInterval);
+    syncInterval = setInterval(() => {
+        reloadAllCoreSafe();
+    }, 30000);
+}
+
 async function init() {
-    const savedVisitors = localStorage.getItem("vms_visitors_demo");
-    const savedLogs = localStorage.getItem("vms_logs_demo");
-    if (savedVisitors) visitorsData = JSON.parse(savedVisitors);
-    if (savedLogs) logsData = JSON.parse(savedLogs);
-    
-    const savedLicense = localStorage.getItem("vms_license_key");
-    const savedPackage = localStorage.getItem("vms_package");
+    const savedLicense = localStorage.getItem("licenseKey");
+    const savedPackage = localStorage.getItem("package");
     if (savedLicense && savedPackage) {
         currentLicense = savedLicense;
         currentPackage = savedPackage;
         currentLimits = getPackageLimits(currentPackage);
-        await syncFromCloud();
         document.getElementById("licenseUpgradeCard").style.display = "none";
     } else {
         currentLimits = getPackageLimits("DEMO");
@@ -1040,14 +1018,14 @@ async function init() {
     }
     
     updatePackageUI();
-    renderDashboard();
-    renderVisitorTable();
-    renderLogTable();
+    await reloadAllCoreSafe();
     loadSites();
-    startAutoSync();
+    startAutoRefresh();
 }
 
-init();
+document.addEventListener('DOMContentLoaded', async () => {
+    await init();
+});
 </script>
 </body>
 </html>

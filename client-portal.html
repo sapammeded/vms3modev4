@@ -572,7 +572,7 @@
                     </tr>
                 </thead>
                 <tbody id="activityTableBody">
-                    <tr><td colspan="4" class="text-muted" style="text-align: center;">Loading...</td></tr>
+                    <tr><td colspan="4" class="text-muted" style="text-align: center;">Loading...</span></tr>
                 </tbody>
             </table>
         </div>
@@ -607,20 +607,65 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+// ================= EXECUTION CONTROL CORE =================
+
+// Queue untuk memastikan semua action jalan berurutan
+let ACTION_QUEUE = Promise.resolve();
+
+// Lock untuk mencegah double click / spam
+let ACTION_LOCK = false;
+
+// Enqueue (biar ga parallel)
+function enqueueAction(fn) {
+    ACTION_QUEUE = ACTION_QUEUE
+        .then(() => fn())
+        .catch(err => {
+            console.error('ACTION ERROR:', err);
+        });
+
+    return ACTION_QUEUE;
+}
+
+// Guard (anti double trigger)
+async function guardedAction(fn) {
+    if (ACTION_LOCK) return;
+    ACTION_LOCK = true;
+
+    try {
+        await fn();
+    } finally {
+        setTimeout(() => {
+            ACTION_LOCK = false;
+        }, 300);
+    }
+}
+
+// Wrapper FINAL (ini yang lo pakai)
+async function SAFE_ACTION(apiPath, body, reloadFn) {
+    return guardedAction(() =>
+        enqueueAction(async () => {
+            await API.call(apiPath, 'POST', body);
+            if (reloadFn) {
+                await reloadFn();
+            }
+        })
+    );
+}
+
 // ================= VMS GLOBAL CORE =================
 const VMS = {
-    license: localStorage.getItem("vms_license_key") || "",
-    deviceId: localStorage.getItem("vms_device_id") || "",
-    site: localStorage.getItem("vms_site") || "SITE_A"
+    license: localStorage.getItem("licenseKey") || "",
+    deviceId: localStorage.getItem("deviceId") || "",
+    site: localStorage.getItem("currentSite") || "SITE_A"
 };
 
 if (!VMS.deviceId) {
     VMS.deviceId = "dev_" + crypto.randomUUID();
-    localStorage.setItem("vms_device_id", VMS.deviceId);
+    localStorage.setItem("deviceId", VMS.deviceId);
 }
 
 window.addEventListener("storage", (e) => {
-    if (["vms_data", "vms_license_key", "vms_site"].includes(e.key)) {
+    if (["vms_data", "licenseKey", "currentSite"].includes(e.key)) {
         location.reload();
     }
 });
@@ -629,6 +674,22 @@ let currentLicense = null;
 let currentCompany = null;
 let devicesData = [];
 let refreshInterval = null;
+let CLIENT_LOCK = false;
+
+// ================= SAFE RELOAD ENGINE =================
+async function reloadClientSafe() {
+    if (CLIENT_LOCK) return;
+    CLIENT_LOCK = true;
+    
+    await Promise.all([
+        loadDevices(),
+        loadActivityLog()
+    ]);
+    
+    updateStats();
+    
+    setTimeout(() => CLIENT_LOCK = false, 300);
+}
 
 function showToast(message, type = "info") {
     const container = document.getElementById("toastContainer");
@@ -647,12 +708,11 @@ function showToast(message, type = "info") {
 }
 
 function getLicenseKey() {
-    let license = localStorage.getItem("vms_client_license");
+    let license = localStorage.getItem("licenseKey");
     if (!license) {
         license = prompt("Please enter your license key:");
         if (license) {
-            localStorage.setItem("vms_client_license", license);
-            localStorage.setItem("vms_license_key", license);
+            localStorage.setItem("licenseKey", license);
         }
     }
     return license;
@@ -686,7 +746,7 @@ async function validateLicense() {
     }
 
     let deviceId = VMS.deviceId;
-    let deviceName = localStorage.getItem("vms_client_device_name") || "Main Device";
+    let deviceName = localStorage.getItem("deviceName") || "Main Device";
 
     showToast("Validating license...", "info");
 
@@ -702,11 +762,10 @@ async function validateLicense() {
             }
         });
 
-        if (data && data.ok) {
+        if (data) {
             currentLicense = licenseKey;
             currentCompany = data.company;
-            localStorage.setItem("vms_client_license", licenseKey);
-            localStorage.setItem("vms_license_key", licenseKey);
+            localStorage.setItem("licenseKey", licenseKey);
             
             updateLicenseUI(data);
             return true;
@@ -743,7 +802,7 @@ function updateLicenseUI(data) {
 }
 
 async function loadDevices() {
-    const licenseKey = localStorage.getItem("vms_license_key");
+    const licenseKey = localStorage.getItem("licenseKey");
     if (!licenseKey) {
         showToast("No license key found", "error");
         return;
@@ -830,12 +889,10 @@ function updateDeviceSelects() {
 function updateStats() {
     const activeCount = devicesData.filter(d => d.status === "ACTIVE").length;
     const pendingCount = devicesData.filter(d => d.status === "PENDING_APPROVAL").length;
-    const totalActivities = 0;
     
     document.getElementById("statTotalDevices").innerText = devicesData.length;
     document.getElementById("statActiveDevices").innerText = activeCount;
     document.getElementById("statPendingDevices").innerText = pendingCount;
-    document.getElementById("statTotalCheckins").innerText = totalActivities;
 }
 
 async function registerDevice() {
@@ -862,10 +919,10 @@ async function registerDevice() {
             meta: { info: meta, registeredAt: Date.now() }
         });
         
-        if (data && data.ok) {
+        if (data) {
             showToast(`Device "${deviceName}" registered! Waiting for admin approval.`, "warning");
             await requestApproval(deviceId, deviceName);
-            await loadDevices();
+            await reloadClientSafe();
             
             document.getElementById("deviceName").value = "";
             document.getElementById("deviceId").value = "";
@@ -890,36 +947,21 @@ async function submitApprovalRequest() {
     const deviceName = document.getElementById("approvalDeviceName").value;
     const reason = document.getElementById("approvalReason").value;
     
-    try {
-        const data = await API.call("/request-approval", "POST", {
-            licenseKey: currentLicense,
-            deviceId: deviceId,
-            deviceName: deviceName,
-            reason: reason || "New device registration"
-        });
-        
-        if (data && data.ok) {
-            showToast("Approval request sent to admin", "success");
-            closeModal("approvalModal");
-            await loadDevices();
-        } else {
-            showToast(data?.message || "Failed to send request", "error");
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/request-approval", {
+        licenseKey: currentLicense,
+        deviceId: deviceId,
+        deviceName: deviceName,
+        reason: reason || "New device registration"
+    }, reloadClientSafe);
+    
+    showToast("Approval request sent to admin", "success");
+    closeModal("approvalModal");
 }
 
 async function removeDevice(deviceId) {
     if (!confirm("Remove this device? You can re-register it later.")) return;
-    
-    try {
-        await API.call("/delete-device", "POST", { deviceId: deviceId, reason: "Removed by client" });
-        await loadDevices();
-        showToast("Device removed", "success");
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/delete-device", { deviceId: deviceId, reason: "Removed by client" }, reloadClientSafe);
+    showToast("Device removed", "success");
 }
 
 async function performCheckin() {
@@ -934,26 +976,16 @@ async function performCheckin() {
     
     showToast(`Processing ${action}...`, "info");
     
-    try {
-        const data = await API.call("/checkin", "POST", {
-            licenseKey: currentLicense,
-            deviceId: deviceId,
-            action: action,
-            location: location || null,
-            qrData: null
-        });
-        
-        if (data && data.ok) {
-            showToast(`${action === 'IN' ? 'Check-in' : 'Check-out'} successful!`, "success");
-            document.getElementById("checkinLocation").value = "";
-            await loadDevices();
-            await loadActivityLog();
-        } else {
-            showToast(data?.message || "Action failed", "error");
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/checkin", {
+        licenseKey: currentLicense,
+        deviceId: deviceId,
+        action: action,
+        location: location || null,
+        qrData: null
+    }, reloadClientSafe);
+    
+    showToast(`${action === 'IN' ? 'Check-in' : 'Check-out'} successful!`, "success");
+    document.getElementById("checkinLocation").value = "";
 }
 
 async function reportViolation() {
@@ -973,26 +1005,16 @@ async function reportViolation() {
     
     showToast("Reporting violation...", "info");
     
-    try {
-        const data = await API.call("/report-violation", "POST", {
-            licenseKey: currentLicense,
-            deviceId: deviceId,
-            violationType: violationType,
-            details: details,
-            location: window.location.href
-        });
-        
-        if (data && data.ok) {
-            showToast(`Violation reported. Device status: ${data.deviceStatus}`, data.deviceStatus === "SUSPENDED" ? "error" : "warning");
-            document.getElementById("violationDetails").value = "";
-            await loadDevices();
-            await loadActivityLog();
-        } else {
-            showToast(data?.message || "Failed to report violation", "error");
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/report-violation", {
+        licenseKey: currentLicense,
+        deviceId: deviceId,
+        violationType: violationType,
+        details: details,
+        location: window.location.href
+    }, reloadClientSafe);
+    
+    showToast(`Violation reported.`, "warning");
+    document.getElementById("violationDetails").value = "";
 }
 
 async function loadActivityLog() {
@@ -1000,6 +1022,8 @@ async function loadActivityLog() {
         const data = await API.call("/visitors", "GET");
         if (data && data.logs) {
             renderActivityTable(data.logs.slice(0, 50));
+        } else {
+            renderActivityTable([]);
         }
     } catch (e) {
         console.warn("Load activity error:", e);
@@ -1011,7 +1035,7 @@ function renderActivityTable(activityData) {
     const tbody = document.getElementById("activityTableBody");
     
     if (!activityData || activityData.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align: center;">No activity recorded yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align: center;">No activity recorded yet</span></tr>';
         return;
     }
     
@@ -1020,9 +1044,9 @@ function renderActivityTable(activityData) {
     for (const activity of activityData.slice(0, 30)) {
         const row = tbody.insertRow();
         row.innerHTML = `
-            <td>${formatDateTime(activity.timestamp || activity.time)}</td>
-            <td>${escapeHtml(activity.name || activity.deviceName || activity.deviceId)}</td>
-            <td class="${activity.action === 'CHECK_IN' ? 'text-success' : 'text-warning'}">${activity.action || activity.type}</td>
+            <td>${formatDateTime(activity.timestamp || activity.time)}</span></td>
+            <td>${escapeHtml(activity.name || activity.deviceName || activity.deviceId)}</span></td>
+            <td class="${activity.action === 'CHECK_IN' ? 'text-success' : 'text-warning'}">${activity.action || activity.type}</span></td>
             <td>${escapeHtml(activity.location || '-')}</span></td>
         `;
     }
@@ -1043,29 +1067,20 @@ async function requestAdditionalDevice() {
     
     showToast("Submitting request...", "info");
     
-    try {
-        const data = await API.call("/request-device", "POST", {
-            licenseKey: currentLicense,
-            deviceName: deviceName,
-            reason: reason || "Additional device request"
-        });
-        
-        if (data && data.ok) {
-            showToast(`Request submitted! Fee: Rp ${data.fee.toLocaleString()}. Wait for admin approval.`, "success");
-            document.getElementById("requestDeviceName").value = "";
-            document.getElementById("requestReason").value = "";
-        } else {
-            showToast(data?.message || "Request failed", "error");
-        }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    await SAFE_ACTION("/request-device", {
+        licenseKey: currentLicense,
+        deviceName: deviceName,
+        reason: reason || "Additional device request"
+    }, null);
+    
+    showToast(`Request submitted! Wait for admin approval.`, "success");
+    document.getElementById("requestDeviceName").value = "";
+    document.getElementById("requestReason").value = "";
 }
 
 function refreshStatus() {
     validateLicense();
-    loadDevices();
-    loadActivityLog();
+    reloadClientSafe();
     showToast("Status refreshed", "success");
 }
 
@@ -1085,15 +1100,14 @@ function startAutoRefresh() {
     if (refreshInterval) clearInterval(refreshInterval);
     refreshInterval = setInterval(() => {
         validateLicense();
-        loadDevices();
+        reloadClientSafe();
     }, 30000);
 }
 
 async function init() {
     const isValid = await validateLicense();
     if (isValid) {
-        await loadDevices();
-        await loadActivityLog();
+        await reloadClientSafe();
         startAutoRefresh();
     } else {
         setTimeout(init, 5000);
