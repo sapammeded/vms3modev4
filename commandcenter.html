@@ -1277,16 +1277,21 @@ async function doLogin() {
     showToast("Logging in...", "info");
 
     try {
-        // Panggil langsung fetch, jangan pakai API.call untuk login
+        console.log("[LOGIN] Sending request to:", "https://vms3modev4.sapammeded.workers.dev/login");
+        console.log("[LOGIN] Username:", username);
+        
         const res = await fetch("https://vms3modev4.sapammeded.workers.dev/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password })
         });
 
+        console.log("[LOGIN] Response status:", res.status);
+        
         const rawData = await res.json();
+        console.log("[LOGIN] Response data:", rawData);
 
-        if (rawData && rawData.ok) {
+        if (rawData && rawData.ok === true) {
             localStorage.setItem("token", rawData.token);
             localStorage.setItem("username", rawData.username);
             localStorage.setItem("role", rawData.role);
@@ -1303,6 +1308,7 @@ async function doLogin() {
             startRefresh();
             await reloadAdminAllSafe();
         } else {
+            console.error("[LOGIN] Failed. rawData.ok =", rawData?.ok);
             showToast(rawData?.error || "Login failed", "error");
         }
     } catch (err) {
