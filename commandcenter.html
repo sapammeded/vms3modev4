@@ -1277,52 +1277,37 @@ async function doLogin() {
     showToast("Logging in...", "info");
 
     try {
-        const data = await API.call("/login", "POST", { username, password });
+        // Panggil langsung fetch, jangan pakai API.call untuk login
+        const res = await fetch("https://vms3modev4.sapammeded.workers.dev/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password })
+        });
 
-        if (data) {
-            localStorage.setItem("token", data.token);
-            localStorage.setItem("username", data.username);
-            localStorage.setItem("role", data.role);
+        const rawData = await res.json();
+
+        if (rawData && rawData.ok) {
+            localStorage.setItem("token", rawData.token);
+            localStorage.setItem("username", rawData.username);
+            localStorage.setItem("role", rawData.role);
 
             document.getElementById("loginOverlay").classList.add("hidden");
 
-            document.getElementById("topUsername").innerText = data.username;
-            document.getElementById("sidebarUsername").innerText = data.username;
-            document.getElementById("topRole").innerText = data.role;
-            document.getElementById("sidebarRole").innerText = data.role;
+            document.getElementById("topUsername").innerText = rawData.username;
+            document.getElementById("sidebarUsername").innerText = rawData.username;
+            document.getElementById("topRole").innerText = rawData.role;
+            document.getElementById("sidebarRole").innerText = rawData.role;
 
-            showToast(`Welcome ${data.username}`, "success");
+            showToast(`Welcome ${rawData.username}`, "success");
 
             startRefresh();
             await reloadAdminAllSafe();
         } else {
-            showToast(data?.error || "Login failed", "error");
+            showToast(rawData?.error || "Login failed", "error");
         }
     } catch (err) {
         console.error("[LOGIN ERROR]", err);
         showToast(err.message, "error");
-    }
-}
-
-function logout() {
-    if (refreshInterval) clearInterval(refreshInterval);
-    localStorage.clear();
-    document.getElementById("loginOverlay").classList.remove("hidden");
-    showToast("Logged out", "info");
-}
-
-async function loadCompanies() {
-    try {
-        const data = await API.call("/admin/companies", "GET");
-        companiesData = Array.isArray(data) ? data : [];
-        renderCompaniesTable();
-        renderExpiringTable();
-        renderRecentLicensesTable();
-    } catch (e) {
-        console.error("loadCompanies error:", e);
-        companiesData = [];
-        renderCompaniesTable();
-        renderExpiringTable();
     }
 }
 
