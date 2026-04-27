@@ -1,27 +1,26 @@
-// ================= CLEAN & STABLE API ENGINE (AUTO 401 FIX) =================
+// ================= CLEAN & STABLE API ENGINE (FINAL NO-RELOAD VERSION) =================
 
 window.CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
 
-// ===== SAFE REQUEST + AUTO 401 =====
+// ===== SAFE REQUEST + AUTO 401 (NO RELOAD) =====
 async function request(path, method = "GET", body = null) {
-    const cleanToken = (localStorage.getItem("token") || "").trim();
-    const cleanLicense = (localStorage.getItem("licenseKey") || "").trim();
+    const token = (localStorage.getItem("token") || "").trim();
+    const license = (localStorage.getItem("licenseKey") || "").trim();
 
     // 🔴 STOP kalau belum login
-    if (!cleanToken) {
+    if (!token) {
         console.warn("NO TOKEN → STOP REQUEST:", path);
         throw new Error("NO_TOKEN");
     }
 
     try {
-        const headers = new Headers();
-        headers.append("Content-Type", "application/json");
-        headers.append("x-token", cleanToken);
-        headers.append("x-license", cleanLicense);
-
         const res = await fetch(`${window.CLOUD_URL}${path}`, {
             method,
-            headers,
+            headers: {
+                "Content-Type": "application/json",
+                "x-token": token,
+                "x-license": license
+            },
             body: body ? JSON.stringify(body) : null
         });
 
@@ -32,24 +31,32 @@ async function request(path, method = "GET", body = null) {
             throw new Error("INVALID_JSON");
         }
 
-        // 🔥 AUTO HANDLE 401 (INI YANG PALING PENTING)
+        // 🔥 AUTO HANDLE 401 (TANPA RELOAD)
         if (res.status === 401) {
-            console.warn("401 DETECTED → AUTO LOGOUT");
+            console.warn("401 DETECTED → AUTO LOGOUT (NO RELOAD)");
 
+            // 🔥 bersihin session
             localStorage.removeItem("token");
             localStorage.removeItem("username");
             localStorage.removeItem("role");
 
-            // pakai toast kalau ada
+            // 🔔 notifikasi
             if (typeof showToast === "function") {
                 showToast("Session expired, silakan login ulang", "warning");
             } else {
                 alert("Session expired, silakan login ulang");
             }
 
-            setTimeout(() => {
-                location.reload();
-            }, 500);
+            // 🔥 tampilkan login overlay
+            const overlay = document.getElementById("loginOverlay");
+            if (overlay) overlay.classList.remove("hidden");
+
+            // 🔥 reset UI user
+            const ids = ["topUsername", "sidebarUsername", "topRole", "sidebarRole"];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = "-";
+            });
 
             throw new Error("UNAUTHORIZED");
         }
@@ -66,11 +73,7 @@ async function request(path, method = "GET", body = null) {
         }
 
         // 🟢 NORMALIZE RESPONSE
-        if (data && data.data !== undefined) {
-            return data.data;
-        }
-
-        return data;
+        return data?.data !== undefined ? data.data : data;
 
     } catch (err) {
         console.error("API ERROR:", path, err.message);
