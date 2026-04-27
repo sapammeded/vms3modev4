@@ -186,12 +186,6 @@
             color: var(--accent);
         }
 
-        .stat-change {
-            font-size: 0.7rem;
-            margin-top: 8px;
-            color: var(--text-muted);
-        }
-
         .card {
             background: var(--card-bg);
             border-radius: 20px;
@@ -219,12 +213,6 @@
         .grid-2 {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 24px;
-        }
-
-        .grid-3 {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
             gap: 24px;
         }
 
@@ -441,22 +429,6 @@
             color: var(--accent);
         }
 
-        .loader {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid white;
-            border-top: 2px solid transparent;
-            border-radius: 50%;
-            animation: spin 0.6s linear infinite;
-            margin-left: 8px;
-            vertical-align: middle;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -519,7 +491,7 @@
                 margin-left: 0;
                 padding: 16px;
             }
-            .grid-2, .grid-3 {
+            .grid-2 {
                 grid-template-columns: 1fr;
             }
             .stats-grid {
@@ -612,7 +584,7 @@
                 <span class="badge badge-active" id="sidebarRole">SUPER_ADMIN</span>
             </div>
             <button class="btn btn-warning" id="sidebarChangePasswordBtn" style="width: 100%; margin-bottom: 8px;" onclick="openChangePasswordModal()">🔐 Ganti Password</button>
-            <button class="btn btn-danger" id="sidebarLogoutBtn" style="width: 100%;">🚪 Logout</button>
+            <button class="btn btn-danger" id="sidebarLogoutBtn" style="width: 100%;" onclick="logout()">🚪 Logout</button>
         </div>
     </div>
 
@@ -626,7 +598,7 @@
                 <span>👤 <span id="topUsername">Admin</span></span>
                 <span class="badge badge-active" id="topRole">SUPER_ADMIN</span>
                 <button class="btn btn-warning btn-sm" onclick="openChangePasswordModal()">🔐 Ganti Password</button>
-                <button class="logout-btn" id="topLogoutBtn">Logout</button>
+                <button class="logout-btn" id="topLogoutBtn" onclick="logout()">Logout</button>
             </div>
         </div>
 
@@ -664,9 +636,7 @@
                 </div>
                 <div class="table-wrapper">
                     <table id="recentViolationsTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Time</th><th>Status</th></tr>
-                        </thead>
+                        <thead><tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Time</th><th>Status</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -678,11 +648,9 @@
                 </div>
                 <div class="table-wrapper">
                     <table id="expiringTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Company</th><th>Package</th><th>Expiry Date</th><th>Devices</th><th>Status</th><th>Action</th></tr>
-                        </thead>
+                        <thead><tr><th>Company</th><th>Package</th><th>Expiry Date</th><th>Devices</th><th>Status</th><th>Action</th></tr></thead>
                         <tbody></tbody>
-                    <tr>
+                    </table>
                 </div>
             </div>
         </div>
@@ -699,9 +667,7 @@
                 </div>
                 <div class="table-wrapper">
                     <table id="companiesTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Company</th><th>License Key</th><th>Package</th><th>Devices</th><th>Max</th><th>Expiry</th><th>Status</th><th>Actions</th></tr>
-                        </thead>
+                        <thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Devices</th><th>Max</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -726,9 +692,7 @@
                 </div>
                 <div class="table-wrapper">
                     <table id="devicesTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Device ID</th><th>Device Name</th><th>Company</th><th>License</th><th>Status</th><th>Last Seen</th><th>Violations</th><th>Actions</th></tr>
-                        </thead>
+                        <thead><tr><th>Device ID</th><th>Device Name</th><th>Company</th><th>License</th><th>Status</th><th>Last Seen</th><th>Violations</th><th>Actions</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -753,9 +717,7 @@
                 </div>
                 <div class="table-wrapper">
                     <table id="violationsTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Details</th><th>Time</th><th>Action</th></tr>
-                        </thead>
+                        <thead><tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Details</th><th>Time</th><th>Action</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -770,9 +732,7 @@
                 </div>
                 <div class="table-wrapper">
                     <table id="requestsTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Company</th><th>Device ID</th><th>Device Name</th><th>Requested At</th><th>Actions</th></tr>
-                        </thead>
+                        <thead><tr><th>Company</th><th>Device ID</th><th>Device Name</th><th>Requested At</th><th>Actions</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -785,56 +745,26 @@
                     <h3>🔑 Generate New License</h3>
                 </div>
                 <div class="grid-2">
-                    <div class="form-group">
-                        <label>Company Name *</label>
-                        <input type="text" id="genCompanyName" placeholder="PT. Contoh Perusahaan">
-                    </div>
-                    <div class="form-group">
-                        <label>PIC Name *</label>
-                        <input type="text" id="genPic" placeholder="Nama Penanggung Jawab">
-                    </div>
-                    <div class="form-group">
-                        <label>Phone *</label>
-                        <input type="text" id="genPhone" placeholder="0812-3456-7890">
-                    </div>
-                    <div class="form-group">
-                        <label>Email *</label>
-                        <input type="email" id="genEmail" placeholder="email@perusahaan.com">
-                    </div>
-                    <div class="form-group">
-                        <label>Package *</label>
+                    <div class="form-group"><label>Company Name *</label><input type="text" id="genCompanyName" placeholder="PT. Contoh Perusahaan"></div>
+                    <div class="form-group"><label>PIC Name *</label><input type="text" id="genPic" placeholder="Nama Penanggung Jawab"></div>
+                    <div class="form-group"><label>Phone *</label><input type="text" id="genPhone" placeholder="0812-3456-7890"></div>
+                    <div class="form-group"><label>Email *</label><input type="email" id="genEmail" placeholder="email@perusahaan.com"></div>
+                    <div class="form-group"><label>Package *</label>
                         <select id="genPackage">
                             <option value="DEMO">DEMO - 2 devices, 7 days trial (Rp 0)</option>
                             <option value="BASIC">BASIC - 10 devices, Rp 500.000/bulan</option>
                             <option value="PRO">PRO - Unlimited devices, Rp 2.000.000/bulan</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>Custom Max Devices (optional)</label>
-                        <input type="number" id="genMaxDevices" placeholder="Leave empty for package default">
-                    </div>
-                    <div class="form-group">
-                        <label>Address</label>
-                        <textarea id="genAddress" rows="2" placeholder="Alamat lengkap perusahaan"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label>Notes</label>
-                        <textarea id="genNotes" rows="2" placeholder="Catatan internal"></textarea>
-                    </div>
+                    <div class="form-group"><label>Custom Max Devices (optional)</label><input type="number" id="genMaxDevices" placeholder="Leave empty for package default"></div>
+                    <div class="form-group"><label>Address</label><textarea id="genAddress" rows="2" placeholder="Alamat lengkap perusahaan"></textarea></div>
+                    <div class="form-group"><label>Notes</label><textarea id="genNotes" rows="2" placeholder="Catatan internal"></textarea></div>
                 </div>
                 <button class="btn btn-primary" onclick="generateLicense()" style="width: 100%;">🚀 Generate License</button>
             </div>
-
             <div class="card">
-                <div class="card-header">
-                    <h3>📋 Recently Generated</h3>
-                </div>
-                <div id="recentLicensesList" class="table-wrapper">
-                    <table style="width: 100%;">
-                        <thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Created</th></tr></thead>
-                        <tbody id="recentLicensesBody"></tbody>
-                    </table>
-                </div>
+                <div class="card-header"><h3>📋 Recently Generated</h3></div>
+                <div class="table-wrapper"><table style="width: 100%;"><thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Created</th></tr></thead><tbody id="recentLicensesBody"></tbody></table></div>
             </div>
         </div>
 
@@ -853,14 +783,7 @@
                         <button class="btn btn-info btn-sm" onclick="loadDeviceRequests()">🔄 Refresh</button>
                     </div>
                 </div>
-                <div class="table-wrapper">
-                    <table id="deviceRequestsTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Company</th><th>Device Name</th><th>Fee</th><th>Status</th><th>Requested</th><th>Actions</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </tr>
-                </div>
+                <div class="table-wrapper"><table id="deviceRequestsTable" style="width: 100%;"><thead><tr><th>Company</th><th>Device Name</th><th>Fee</th><th>Status</th><th>Requested</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
             </div>
         </div>
 
@@ -869,97 +792,43 @@
                 <div class="card-header">
                     <h3>💰 Invoices & Payments</h3>
                     <div style="display: flex; gap: 12px;">
-                        <select id="invoiceStatusFilter" style="width: 130px;">
-                            <option value="">All</option>
-                            <option value="PAID">Paid</option>
-                            <option value="UNPAID">Unpaid</option>
-                        </select>
+                        <select id="invoiceStatusFilter" style="width: 130px;"><option value="">All</option><option value="PAID">Paid</option><option value="UNPAID">Unpaid</option></select>
                         <button class="btn btn-info btn-sm" onclick="exportInvoicesToExcel()">📊 Export</button>
                     </div>
                 </div>
-                <div class="table-wrapper">
-                    <table id="invoicesTable" style="width: 100%;">
-                        <thead>
-                            <tr><th>Invoice #</th><th>Company</th><th>Amount</th><th>Months</th><th>Status</th><th>Created</th><th>Actions</th></tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
+                <div class="table-wrapper"><table id="invoicesTable" style="width: 100%;"><thead><tr><th>Invoice #</th><th>Company</th><th>Amount</th><th>Months</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
             </div>
         </div>
 
         <div id="settingsTab" class="tab-pane">
             <div class="grid-2">
                 <div class="card">
-                    <div class="card-header">
-                        <h3>👥 Admin Users</h3>
-                    </div>
-                    <div class="form-group">
-                        <label>New Username</label>
-                        <input type="text" id="newAdminUser" placeholder="username">
-                    </div>
-                    <div class="form-group">
-                        <label>New Password</label>
-                        <input type="password" id="newAdminPass" placeholder="password">
-                    </div>
-                    <div class="form-group">
-                        <label>Role</label>
-                        <select id="newAdminRole">
-                            <option value="ADMIN">ADMIN</option>
-                            <option value="SUPER_ADMIN">SUPER_ADMIN</option>
-                        </select>
-                    </div>
+                    <div class="card-header"><h3>👥 Admin Users</h3></div>
+                    <div class="form-group"><label>New Username</label><input type="text" id="newAdminUser" placeholder="username"></div>
+                    <div class="form-group"><label>New Password</label><input type="password" id="newAdminPass" placeholder="password"></div>
+                    <div class="form-group"><label>Role</label><select id="newAdminRole"><option value="ADMIN">ADMIN</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
                     <button class="btn btn-primary" onclick="addAdminUser()">➕ Add Admin User</button>
-                    
-                    <div style="margin-top: 24px;">
-                        <h4 style="margin-bottom: 12px;">Existing Admins</h4>
-                        <div id="adminUsersList"></div>
-                    </div>
+                    <div style="margin-top: 24px;"><h4 style="margin-bottom: 12px;">Existing Admins</h4><div id="adminUsersList"></div></div>
                 </div>
-
                 <div class="card">
-                    <div class="card-header">
-                        <h3>💰 Pricing Configuration</h3>
-                    </div>
-                    <div class="form-group">
-                        <label>BASIC Package Price (Rp/month)</label>
-                        <input type="number" id="priceBasic" value="500000">
-                    </div>
-                    <div class="form-group">
-                        <label>PRO Package Price (Rp/month)</label>
-                        <input type="number" id="pricePro" value="2000000">
-                    </div>
-                    <div class="form-group">
-                        <label>Extra Device Fee (Rp/device/month) - for BASIC</label>
-                        <input type="number" id="extraDeviceFee" value="50000">
-                    </div>
-                    <div class="form-group">
-                        <label>Tax (%)</label>
-                        <input type="number" id="taxRate" value="11">
-                    </div>
+                    <div class="card-header"><h3>💰 Pricing Configuration</h3></div>
+                    <div class="form-group"><label>BASIC Package Price (Rp/month)</label><input type="number" id="priceBasic" value="500000"></div>
+                    <div class="form-group"><label>PRO Package Price (Rp/month)</label><input type="number" id="pricePro" value="2000000"></div>
+                    <div class="form-group"><label>Extra Device Fee (Rp/device/month) - for BASIC</label><input type="number" id="extraDeviceFee" value="50000"></div>
+                    <div class="form-group"><label>Tax (%)</label><input type="number" id="taxRate" value="11"></div>
                     <button class="btn btn-primary" onclick="savePricing()">💾 Save Pricing</button>
                 </div>
-
                 <div class="card">
-                    <div class="card-header">
-                        <h3>🔄 System Actions</h3>
-                    </div>
+                    <div class="card-header"><h3>🔄 System Actions</h3></div>
                     <div style="display: flex; flex-direction: column; gap: 12px;">
                         <button class="btn btn-info" onclick="backupData()">📦 Backup All Data</button>
                         <button class="btn btn-warning" onclick="checkExpiredNow()">⏰ Check Expired Licenses</button>
                         <button class="btn btn-danger" onclick="resetSystem()">⚠️ Reset System (Clear All Data)</button>
                     </div>
                 </div>
-
                 <div class="card">
-                    <div class="card-header">
-                        <h3>ℹ️ System Info</h3>
-                    </div>
-                    <div id="systemInfo">
-                        <p>Version: v3.0 Enterprise</p>
-                        <p>Status: <span class="badge badge-active">Online</span></p>
-                        <p id="serverTime">-</p>
-                    </div>
+                    <div class="card-header"><h3>ℹ️ System Info</h3></div>
+                    <div id="systemInfo"><p>Version: v3.0 Enterprise</p><p>Status: <span class="badge badge-active">Online</span></p><p id="serverTime">-</p></div>
                 </div>
             </div>
         </div>
@@ -969,186 +838,43 @@
 <div id="loginOverlay" class="login-overlay">
     <div class="login-card">
         <h2>🔐 VMS Command Center</h2>
-        <div class="form-group">
-            <label>Username</label>
-            <input type="text" id="loginUser" placeholder="admin">
-        </div>
-        <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="loginPass" placeholder="********">
-        </div>
+        <div class="form-group"><label>Username</label><input type="text" id="loginUser" placeholder="admin"></div>
+        <div class="form-group"><label>Password</label><input type="password" id="loginPass" placeholder="********"></div>
         <button class="btn btn-primary" onclick="doLogin()" style="width: 100%;">Login</button>
     </div>
 </div>
 
-<div id="renewModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>🔄 Renew License</h3>
-            <button class="close-modal" onclick="closeModal('renewModal')">&times;</button>
-        </div>
-        <div class="form-group">
-            <label>Company</label>
-            <input type="text" id="renewCompanyName" readonly>
-        </div>
-        <div class="form-group">
-            <label>Months</label>
-            <select id="renewMonths">
-                <option value="1">1 Month</option>
-                <option value="3">3 Months (5% discount)</option>
-                <option value="6">6 Months (10% discount)</option>
-                <option value="12">12 Months (15% discount)</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Payment Method</label>
-            <select id="renewPaymentMethod">
-                <option value="MANUAL">Manual (Bank Transfer)</option>
-                <option value="CASH">Cash</option>
-            </select>
-        </div>
-        <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button class="btn btn-primary" onclick="confirmRenew()">Renew License</button>
-            <button class="btn btn-outline" onclick="closeModal('renewModal')">Cancel</button>
-        </div>
-    </div>
-</div>
+<!-- MODALS -->
+<div id="renewModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>🔄 Renew License</h3><button class="close-modal" onclick="closeModal('renewModal')">&times;</button></div><div class="form-group"><label>Company</label><input type="text" id="renewCompanyName" readonly></div><div class="form-group"><label>Months</label><select id="renewMonths"><option value="1">1 Month</option><option value="3">3 Months (5% discount)</option><option value="6">6 Months (10% discount)</option><option value="12">12 Months (15% discount)</option></select></div><div class="form-group"><label>Payment Method</label><select id="renewPaymentMethod"><option value="MANUAL">Manual (Bank Transfer)</option><option value="CASH">Cash</option></select></div><div style="display: flex; gap: 12px; margin-top: 20px;"><button class="btn btn-primary" onclick="confirmRenew()">Renew License</button><button class="btn btn-outline" onclick="closeModal('renewModal')">Cancel</button></div></div></div>
 
-<div id="upgradeModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>📈 Upgrade Package</h3>
-            <button class="close-modal" onclick="closeModal('upgradeModal')">&times;</button>
-        </div>
-        <div class="form-group">
-            <label>Company</label>
-            <input type="text" id="upgradeCompanyName" readonly>
-        </div>
-        <div class="form-group">
-            <label>Current Package</label>
-            <input type="text" id="upgradeCurrentPackage" readonly>
-        </div>
-        <div class="form-group">
-            <label>New Package</label>
-            <select id="upgradePackage">
-                <option value="BASIC">BASIC - 10 devices</option>
-                <option value="PRO">PRO - Unlimited devices</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label>Custom Max Devices (for PRO)</label>
-            <input type="number" id="upgradeMaxDevices" placeholder="Leave empty for unlimited">
-        </div>
-        <div class="form-group">
-            <label>Notes</label>
-            <textarea id="upgradeNotes" rows="2" placeholder="Upgrade notes"></textarea>
-        </div>
-        <div style="display: flex; gap: 12px; margin-top: 20px;">
-            <button class="btn btn-primary" onclick="confirmUpgrade()">Upgrade Package</button>
-            <button class="btn btn-outline" onclick="closeModal('upgradeModal')">Cancel</button>
-        </div>
-    </div>
-</div>
+<div id="upgradeModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>📈 Upgrade Package</h3><button class="close-modal" onclick="closeModal('upgradeModal')">&times;</button></div><div class="form-group"><label>Company</label><input type="text" id="upgradeCompanyName" readonly></div><div class="form-group"><label>Current Package</label><input type="text" id="upgradeCurrentPackage" readonly></div><div class="form-group"><label>New Package</label><select id="upgradePackage"><option value="BASIC">BASIC - 10 devices</option><option value="PRO">PRO - Unlimited devices</option></select></div><div class="form-group"><label>Custom Max Devices (for PRO)</label><input type="number" id="upgradeMaxDevices" placeholder="Leave empty for unlimited"></div><div class="form-group"><label>Notes</label><textarea id="upgradeNotes" rows="2" placeholder="Upgrade notes"></textarea></div><div style="display: flex; gap: 12px; margin-top: 20px;"><button class="btn btn-primary" onclick="confirmUpgrade()">Upgrade Package</button><button class="btn btn-outline" onclick="closeModal('upgradeModal')">Cancel</button></div></div></div>
 
-<div id="deviceDetailModal" class="modal">
-    <div class="modal-content" style="max-width: 600px;">
-        <div class="modal-header">
-            <h3>📱 Device Details</h3>
-            <button class="close-modal" onclick="closeModal('deviceDetailModal')">&times;</button>
-        </div>
-        <div id="deviceDetailContent"></div>
-    </div>
-</div>
+<div id="deviceDetailModal" class="modal"><div class="modal-content" style="max-width: 600px;"><div class="modal-header"><h3>📱 Device Details</h3><button class="close-modal" onclick="closeModal('deviceDetailModal')">&times;</button></div><div id="deviceDetailContent"></div></div></div>
 
-<div id="companyDetailModal" class="modal">
-    <div class="modal-content" style="max-width: 650px;">
-        <div class="modal-header">
-            <h3>🏢 Company Details</h3>
-            <button class="close-modal" onclick="closeModal('companyDetailModal')">&times;</button>
-        </div>
-        <div id="companyDetailContent"></div>
-    </div>
-</div>
+<div id="companyDetailModal" class="modal"><div class="modal-content" style="max-width: 650px;"><div class="modal-header"><h3>🏢 Company Details</h3><button class="close-modal" onclick="closeModal('companyDetailModal')">&times;</button></div><div id="companyDetailContent"></div></div></div>
 
-<div id="changePasswordModal" class="modal-overlay" style="display: none;">
-    <div class="modal-box">
-        <h3>🔐 Ganti Password</h3>
-        <input type="password" id="oldPassword" placeholder="Password Lama" class="input"/>
-        <input type="password" id="newPassword" placeholder="Password Baru" class="input"/>
-        <input type="password" id="confirmPassword" placeholder="Konfirmasi Password Baru" class="input"/>
-        <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button>
-            <button class="btn btn-warning" onclick="submitChangePassword()">Simpan</button>
-        </div>
-    </div>
-</div>
+<div id="changePasswordModal" class="modal-overlay" style="display: none;"><div class="modal-box"><h3>🔐 Ganti Password</h3><input type="password" id="oldPassword" placeholder="Password Lama" class="input"/><input type="password" id="newPassword" placeholder="Password Baru" class="input"/><input type="password" id="confirmPassword" placeholder="Konfirmasi Password Baru" class="input"/><div class="modal-actions"><button class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button><button class="btn btn-warning" onclick="submitChangePassword()">Simpan</button></div></div></div>
 
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
 // ================= EXECUTION CONTROL CORE =================
-
-// Queue untuk memastikan semua action jalan berurutan
 let ACTION_QUEUE = Promise.resolve();
-
-// Lock untuk mencegah double click / spam
 let ACTION_LOCK = false;
-
-// Enqueue (biar ga parallel)
 function enqueueAction(fn) {
-    ACTION_QUEUE = ACTION_QUEUE
-        .then(() => fn())
-        .catch(err => {
-            console.error('ACTION ERROR:', err);
-        });
-
+    ACTION_QUEUE = ACTION_QUEUE.then(() => fn()).catch(err => console.error('ACTION ERROR:', err));
     return ACTION_QUEUE;
 }
-
-// Guard (anti double trigger)
 async function guardedAction(fn) {
     if (ACTION_LOCK) return;
     ACTION_LOCK = true;
-
-    try {
-        await fn();
-    } finally {
-        setTimeout(() => {
-            ACTION_LOCK = false;
-        }, 300);
-    }
+    try { await fn(); } finally { setTimeout(() => { ACTION_LOCK = false; }, 300); }
 }
-
-// Wrapper FINAL (ini yang lo pakai)
 async function SAFE_ACTION(apiPath, body, reloadFn) {
-    return guardedAction(() =>
-        enqueueAction(async () => {
-            await API.call(apiPath, 'POST', body);
-            if (reloadFn) {
-                await reloadFn();
-            }
-        })
-    );
+    return guardedAction(() => enqueueAction(async () => { await API.call(apiPath, 'POST', body); if (reloadFn) await reloadFn(); }));
 }
 
 // ================= VMS GLOBAL CORE =================
-const VMS = {
-    license: localStorage.getItem("licenseKey") || "",
-    deviceId: localStorage.getItem("deviceId") || "",
-    site: localStorage.getItem("currentSite") || "SITE_A"
-};
-
-if (!VMS.deviceId) {
-    VMS.deviceId = "dev_" + crypto.randomUUID();
-    localStorage.setItem("deviceId", VMS.deviceId);
-}
-
-window.addEventListener("storage", (e) => {
-    if (["vms_data", "licenseKey", "currentSite"].includes(e.key)) {
-        location.reload();
-    }
-});
-
 let currentUser = null;
 let refreshInterval = null;
 let packageChart = null;
@@ -1159,379 +885,106 @@ let activityData = [];
 let invoicesData = [];
 let ADMIN_LOCK = false;
 
-// ================= SAFE RELOAD ENGINE =================
-async function reloadAdminAllSafe() {
-    if (ADMIN_LOCK) return;
-    ADMIN_LOCK = true;
-    
-    await Promise.all([
-        loadCompanies(),
-        loadDevices(),
-        loadActivity(),
-        loadInvoices(),
-        loadStats(),
-        loadDeviceRequests()
-    ]);
-    
-    setTimeout(() => ADMIN_LOCK = false, 300);
-}
-
+// ================= HELPER FUNCTIONS =================
 function showToast(message, type = "info") {
     const container = document.getElementById("toastContainer");
     const toast = document.createElement("div");
     toast.className = "toast";
-    const colors = {
-        success: "#10b981",
-        error: "#ef4444",
-        warning: "#f59e0b",
-        info: "#3b82f6"
-    };
+    const colors = { success: "#10b981", error: "#ef4444", warning: "#f59e0b", info: "#3b82f6" };
     toast.style.borderLeftColor = colors[type] || colors.info;
     toast.innerHTML = message;
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
 
-function formatCurrency(amount) {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount);
-}
+function formatCurrency(amount) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount); }
+function formatDate(timestamp) { if (!timestamp) return '-'; return new Date(timestamp).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' }); }
+function formatDateTime(timestamp) { if (!timestamp) return '-'; return new Date(timestamp).toLocaleString('id-ID'); }
+function escapeHtml(str) { if (!str) return ''; return String(str).replace(/[&<>]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m] || m)); }
 
-function formatDate(timestamp) {
-    if (!timestamp) return '-';
-    return new Date(timestamp).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function formatDateTime(timestamp) {
-    if (!timestamp) return '-';
-    return new Date(timestamp).toLocaleString('id-ID');
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>]/g, function(m) {
-        if (m === '&') return '&amp;';
-        if (m === '<') return '&lt;';
-        if (m === '>') return '&gt;';
-        return m;
-    });
-}
-
-function openChangePasswordModal() {
-    document.getElementById("changePasswordModal").style.display = "flex";
-}
-
-function closeChangePasswordModal() {
-    document.getElementById("changePasswordModal").style.display = "none";
-    document.getElementById("oldPassword").value = "";
-    document.getElementById("newPassword").value = "";
-    document.getElementById("confirmPassword").value = "";
-}
+// ================= LOGIN & LOGOUT =================
+function openChangePasswordModal() { document.getElementById("changePasswordModal").style.display = "flex"; }
+function closeChangePasswordModal() { document.getElementById("changePasswordModal").style.display = "none"; document.getElementById("oldPassword").value = ""; document.getElementById("newPassword").value = ""; document.getElementById("confirmPassword").value = ""; }
 
 async function submitChangePassword() {
     const oldPassword = document.getElementById("oldPassword").value;
     const newPassword = document.getElementById("newPassword").value;
     const confirmPassword = document.getElementById("confirmPassword").value;
-
-    if (!oldPassword || !newPassword) {
-        showToast("Isi semua field", "warning");
-        return;
-    }
-
-    if (newPassword.length < 6) {
-        showToast("Password minimal 6 karakter", "warning");
-        return;
-    }
-
-    if (newPassword !== confirmPassword) {
-        showToast("Konfirmasi password tidak cocok", "warning");
-        return;
-    }
-
+    if (!oldPassword || !newPassword) { showToast("Isi semua field", "warning"); return; }
+    if (newPassword.length < 6) { showToast("Password minimal 6 karakter", "warning"); return; }
+    if (newPassword !== confirmPassword) { showToast("Konfirmasi password tidak cocok", "warning"); return; }
     showToast("Mengubah password...", "warning");
-
     try {
         const res = await API.call("/admin/change-password", "POST", { oldPassword, newPassword });
         if (res) {
             showToast("Password berhasil diubah. Login ulang...", "success");
-            setTimeout(() => {
-                localStorage.removeItem("token");
-                localStorage.removeItem("username");
-                localStorage.removeItem("role");
-                location.reload();
-            }, 1500);
+            setTimeout(() => { localStorage.clear(); location.reload(); }, 1500);
         }
-    } catch (e) {
-        showToast(e.message, "error");
-    }
+    } catch (e) { showToast(e.message, "error"); }
 }
 
 async function doLogin() {
     const username = document.getElementById("loginUser").value.trim();
     const password = document.getElementById("loginPass").value;
-
-    if (!username || !password) {
-        showToast("Username and password required", "error");
-        return;
-    }
-
+    if (!username || !password) { showToast("Username and password required", "error"); return; }
     showToast("Logging in...", "info");
-
     try {
-        console.log("[LOGIN] Sending request to:", "https://vms3modev4.sapammeded.workers.dev/login");
-        console.log("[LOGIN] Username:", username);
-        
         const res = await fetch("https://vms3modev4.sapammeded.workers.dev/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password })
         });
-
-        console.log("[LOGIN] Response status:", res.status);
-        
         const rawData = await res.json();
-        console.log("[LOGIN] Response data:", rawData);
-
         if (rawData && rawData.ok === true) {
             localStorage.setItem("token", rawData.token);
             localStorage.setItem("username", rawData.username);
             localStorage.setItem("role", rawData.role);
-
             document.getElementById("loginOverlay").classList.add("hidden");
-
             document.getElementById("topUsername").innerText = rawData.username;
             document.getElementById("sidebarUsername").innerText = rawData.username;
             document.getElementById("topRole").innerText = rawData.role;
             document.getElementById("sidebarRole").innerText = rawData.role;
-
             showToast(`Welcome ${rawData.username}`, "success");
-
             startRefresh();
             await reloadAdminAllSafe();
-        } else {
-            console.error("[LOGIN] Failed. rawData.ok =", rawData?.ok);
-            showToast(rawData?.error || "Login failed", "error");
-        }
-    } catch (err) {
-        console.error("[LOGIN ERROR]", err);
-        showToast(err.message, "error");
-    }
+        } else { showToast(rawData?.error || "Login failed", "error"); }
+    } catch (err) { console.error("[LOGIN ERROR]", err); showToast(err.message, "error"); }
 }
 
-function renderCompaniesTable() {
-    const tbody = document.querySelector("#companiesTable tbody");
-    if (!tbody) return;
-
-    const search = document.getElementById("companySearch")?.value.toLowerCase() || "";
-    const filtered = companiesData.filter(c => (c.companyName || "").toLowerCase().includes(search));
-    tbody.innerHTML = "";
-
-    for (const company of filtered) {
-        const row = tbody.insertRow();
-        const isExpired = company.expiredAt < Date.now();
-        const packageClass = company.package === "PRO" ? "badge-pro" : (company.package === "BASIC" ? "badge-basic" : "badge-demo");
-        row.innerHTML = `
-            <td><strong>${escapeHtml(company.companyName)}</strong><br><small class="text-muted">${escapeHtml(company.pic || "-")}</small></td>
-            <td><code class="code">${escapeHtml(company.licenseKey)}</code></td>
-            <td><span class="badge ${packageClass}">${escapeHtml(company.package)}</span></td>
-            <td>${company.currentDevices || 0} / ${company.maxDevices}</td>
-            <td>${company.maxDevices}</td>
-            <td class="${isExpired ? "text-danger" : ""}">${formatDate(company.expiredAt)}</span></td>
-            <td><span class="badge ${isExpired ? "badge-expired" : "badge-active"}">${isExpired ? "EXPIRED" : (company.status || "ACTIVE")}</span></td>
-            <td>
-                <button class="btn btn-info btn-sm" onclick="viewCompanyDetails('${company.id}')">Detail</button>
-                <button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button>
-                <button class="btn btn-primary btn-sm" onclick="openUpgradeModal('${company.id}', '${escapeHtml(company.companyName)}', '${company.package}')">Upgrade</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteCompany('${company.id}')">Delete</button>
-             </span>
-        `;
-    }
+function logout() {
+    if (refreshInterval) clearInterval(refreshInterval);
+    localStorage.clear();
+    document.getElementById("loginOverlay").classList.remove("hidden");
+    showToast("Logged out", "info");
 }
 
-function renderExpiringTable() {
-    const tbody = document.querySelector("#expiringTable tbody");
-    if (!tbody) return;
-    
-    const now = Date.now();
-    const expiringSoon = companiesData.filter(c => c.expiredAt < now + 7 * 86400000).sort((a, b) => a.expiredAt - b.expiredAt).slice(0, 10);
-    tbody.innerHTML = "";
-    
-    for (const company of expiringSoon) {
-        const row = tbody.insertRow();
-        const isExpired = company.expiredAt < now;
-        row.innerHTML = `
-            <td><strong>${escapeHtml(company.companyName)}</strong></td>
-            <td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(company.package)}</span></td>
-            <td class="${isExpired ? 'text-danger' : 'text-warning'}">${formatDate(company.expiredAt)}</span></td>
-            <td>${company.currentDevices || 0}</span></td>
-            <td><span class="badge ${isExpired ? 'badge-expired' : 'badge-warning'}">${isExpired ? 'EXPIRED' : 'Expiring Soon'}</span></td>
-            <td><button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button></span></td>
-        `;
-    }
+// ================= LOAD FUNCTIONS =================
+async function reloadAdminAllSafe() {
+    if (ADMIN_LOCK) return;
+    ADMIN_LOCK = true;
+    await Promise.all([
+        loadCompanies(), loadDevices(), loadActivity(), loadInvoices(), loadStats(), loadDeviceRequests(), loadAdminUsers()
+    ]);
+    setTimeout(() => ADMIN_LOCK = false, 300);
+}
+
+async function loadCompanies() {
+    try { const data = await API.call("/admin/companies", "GET"); companiesData = Array.isArray(data) ? data : []; renderCompaniesTable(); renderExpiringTable(); renderRecentLicensesTable(); } 
+    catch (e) { console.error("loadCompanies error:", e); companiesData = []; renderCompaniesTable(); renderExpiringTable(); }
 }
 
 async function loadDevices() {
-    try {
-        const data = await API.call("/admin/devices", "GET");
-        devicesData = Array.isArray(data) ? data : [];
-        renderDevicesTable();
-        renderPendingRequests();
-    } catch (e) {
-        console.error("loadDevices error:", e);
-        devicesData = [];
-        renderDevicesTable();
-        renderPendingRequests();
-    }
-}
-
-function renderDevicesTable() {
-    const tbody = document.querySelector("#devicesTable tbody");
-    if (!tbody) return;
-
-    const search = document.getElementById("deviceSearch")?.value.toLowerCase() || "";
-    const statusFilter = document.getElementById("deviceStatusFilter")?.value || "";
-    const filtered = devicesData.filter(d =>
-        ((d.deviceId || "").toLowerCase().includes(search) ||
-        (d.companyName || "").toLowerCase().includes(search) ||
-        (d.deviceName || "").toLowerCase().includes(search)) &&
-        (statusFilter === "" || d.status === statusFilter)
-    );
-    tbody.innerHTML = "";
-
-    for (const device of filtered) {
-        const row = tbody.insertRow();
-        let statusClass = "badge-active";
-        if (device.status === "PENDING_APPROVAL") statusClass = "badge-pending";
-        if (device.status === "SUSPENDED") statusClass = "badge-suspended";
-        if (device.status === "BANNED") statusClass = "badge-banned";
-        row.innerHTML = `
-            <td><code class="code">${escapeHtml(device.deviceId || "-")}</code></td>
-            <td>${escapeHtml(device.deviceName || "-")}</span></td>
-            <td><strong>${escapeHtml(device.companyName || "-")}</strong></span></td>
-            <td><code class="code">${escapeHtml(device.licenseKey || "-")}</code></span></td>
-            <td><span class="badge ${statusClass}">${escapeHtml(device.status)}</span></span></td>
-            <td>${formatDateTime(device.lastSeen)}</span></td>
-            <td>${device.violations?.length || 0}</span></td>
-            <td>
-                <button class="btn btn-info btn-sm" onclick="viewDeviceDetails('${device.deviceId}')">Detail</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteDevice('${device.deviceId}')">Delete</button>
-             </span></td>
-        `;
-    }
+    try { const data = await API.call("/admin/devices", "GET"); devicesData = Array.isArray(data) ? data : []; renderDevicesTable(); renderPendingRequests(); } 
+    catch (e) { console.error("loadDevices error:", e); devicesData = []; renderDevicesTable(); renderPendingRequests(); }
 }
 
 async function loadActivity() {
-    try {
-        const data = await API.call("/admin/activity?limit=500", "GET");
-        activityData = Array.isArray(data) ? data : [];
-        renderViolationsTable();
-        renderRecentViolations();
-    } catch (e) {
-        console.error("loadActivity error:", e);
-        activityData = [];
-        renderViolationsTable();
-        renderRecentViolations();
-    }
-}
-
-function renderViolationsTable() {
-    const tbody = document.querySelector("#violationsTable tbody");
-    if (!tbody) return;
-    
-    const search = document.getElementById("violationSearch")?.value.toLowerCase() || "";
-    const typeFilter = document.getElementById("violationTypeFilter")?.value || "";
-    const violations = activityData.filter(a => a.type === "VIOLATION_REPORTED")
-        .filter(v => (v.companyName || "").toLowerCase().includes(search) || (v.deviceId || "").toLowerCase().includes(search))
-        .filter(v => typeFilter === "" || v.violationType === typeFilter)
-        .slice(0, 200);
-    tbody.innerHTML = "";
-    
-    for (const v of violations) {
-        const row = tbody.insertRow();
-        row.innerHTML = `
-            <td><strong>${escapeHtml(v.companyName || '-')}</strong></td>
-            <td><code class="code">${v.deviceId ? escapeHtml(v.deviceId.substring(0, 12)) : '-'}...</code></span></td>
-            <td><span class="badge badge-danger">${escapeHtml(v.violationType || 'Unknown')}</span></span></td>
-            <td>${escapeHtml(v.details || '-')}</span></span></td>
-            <td>${formatDateTime(v.timestamp)}</span></span></td>
-            <td><button class="btn btn-warning btn-sm" onclick="viewViolationDetails('${v.id}')">View</button></span></td>
-        `;
-    }
-}
-
-function renderRecentViolations() {
-    const tbody = document.querySelector("#recentViolationsTable tbody");
-    if (!tbody) return;
-    
-    const violations = activityData.filter(a => a.type === "VIOLATION_REPORTED").slice(0, 20);
-    tbody.innerHTML = "";
-    
-    for (const v of violations) {
-        const row = tbody.insertRow();
-        row.innerHTML = `
-            <td><strong>${escapeHtml(v.companyName || '-')}</strong></td>
-            <td><code class="code">${v.deviceId ? escapeHtml(v.deviceId.substring(0, 12)) : '-'}...</code></td>
-            <td><span class="badge badge-danger">${escapeHtml(v.violationType || 'Unknown')}</span></span></span></td>
-            <td>${formatDateTime(v.timestamp)}</span></span></td>
-            <td><span class="badge badge-warning">Reported</span></span></td>
-        `;
-    }
-}
-
-function renderPendingRequests() {
-    const pending = devicesData.filter(d => d.status === "PENDING_APPROVAL");
-    const tbody = document.querySelector("#requestsTable tbody");
-    if (!tbody) return;
-    
-    document.getElementById("pendingCount").innerText = pending.length;
-    tbody.innerHTML = "";
-    
-    for (const device of pending) {
-        const row = tbody.insertRow();
-        row.innerHTML = `
-            <td><strong>${escapeHtml(device.companyName || '-')}</strong></td>
-            <td><code class="code">${device.deviceId ? escapeHtml(device.deviceId.substring(0, 16)) : '-'}...</code></td>
-            <td>${escapeHtml(device.deviceName || '-')}</span></span></td>
-            <td>${formatDateTime(device.approvalRequest?.requestedAt || device.firstSeen)}</span></span></td>
-            <td>
-                <button class="btn btn-success btn-sm" onclick="approveDevice('${escapeHtml(device.deviceId)}', true)">✅ Approve</button>
-                <button class="btn btn-danger btn-sm" onclick="approveDevice('${escapeHtml(device.deviceId)}', false)">❌ Reject</button>
-             </span></td>
-        `;
-    }
+    try { const data = await API.call("/admin/activity?limit=500", "GET"); activityData = Array.isArray(data) ? data : []; renderViolationsTable(); renderRecentViolations(); } 
+    catch (e) { console.error("loadActivity error:", e); activityData = []; renderViolationsTable(); renderRecentViolations(); }
 }
 
 async function loadInvoices() {
-    try {
-        const data = await API.call("/admin/invoices", "GET");
-        invoicesData = Array.isArray(data) ? data : [];
-        renderInvoicesTable();
-    } catch (e) {
-        console.error("loadInvoices error:", e);
-        invoicesData = [];
-        renderInvoicesTable();
-    }
-}
-
-function renderInvoicesTable() {
-    const tbody = document.querySelector("#invoicesTable tbody");
-    if (!tbody) return;
-    
-    const statusFilter = document.getElementById("invoiceStatusFilter")?.value || "";
-    const filtered = invoicesData.filter(i => statusFilter === "" || i.status === statusFilter);
-    tbody.innerHTML = "";
-    
-    for (const inv of filtered.slice(0, 100)) {
-        const row = tbody.insertRow();
-        row.innerHTML = `
-            <td><code class="code">${escapeHtml(inv.id)}</code></td>
-            <td><strong>${escapeHtml(inv.companyName)}</strong></td>
-            <td>${formatCurrency(inv.amount)}</span></span></td>
-            <td>${inv.months} month(s)</span></span></td>
-            <td><span class="badge ${inv.status === 'PAID' ? 'badge-active' : 'badge-pending'}">${escapeHtml(inv.status)}</span></span></span></td>
-            <td>${formatDate(inv.createdAt)}</span></span></td>
-            <td>${inv.status === 'UNPAID' ? `<button class="btn btn-success btn-sm" onclick="markInvoicePaid('${inv.id}')">Mark Paid</button>` : '-'}</span></span></span></td>
-        `;
-    }
+    try { const data = await API.call("/admin/invoices", "GET"); invoicesData = Array.isArray(data) ? data : []; renderInvoicesTable(); } 
+    catch (e) { console.error("loadInvoices error:", e); invoicesData = []; renderInvoicesTable(); }
 }
 
 async function loadStats() {
@@ -1546,43 +999,52 @@ async function loadStats() {
             document.getElementById("statSuspendedDevices").innerText = (data.devices?.suspended || 0) + (data.devices?.banned || 0);
             document.getElementById("statTotalViolations").innerText = data.violations?.total || 0;
             document.getElementById("statMonthlyRevenue").innerHTML = formatCurrency(data.revenue?.last30Days || 0);
-            
             if (packageChart) packageChart.destroy();
             if (violationChart) violationChart.destroy();
-            
             const pkgCtx = document.getElementById("packageChart").getContext("2d");
-            packageChart = new Chart(pkgCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: ['DEMO', 'BASIC', 'PRO'],
-                    datasets: [{
-                        data: [data.companies?.byPackage?.DEMO || 0, data.companies?.byPackage?.BASIC || 0, data.companies?.byPackage?.PRO || 0],
-                        backgroundColor: ['#f59e0b', '#3b82f6', '#10b981'],
-                        borderWidth: 0
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { color: '#f9fafb' } } } }
-            });
-            
+            packageChart = new Chart(pkgCtx, { type: 'doughnut', data: { labels: ['DEMO', 'BASIC', 'PRO'], datasets: [{ data: [data.companies?.byPackage?.DEMO || 0, data.companies?.byPackage?.BASIC || 0, data.companies?.byPackage?.PRO || 0], backgroundColor: ['#f59e0b', '#3b82f6', '#10b981'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'bottom', labels: { color: '#f9fafb' } } } } });
             const violCtx = document.getElementById("violationChart").getContext("2d");
-            violationChart = new Chart(violCtx, {
-                type: 'line',
-                data: {
-                    labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'],
-                    datasets: [{
-                        label: 'Violations',
-                        data: [data.violations?.last7Days || 0, 0, 0, data.violations?.last30Days || 0],
-                        borderColor: '#ef4444',
-                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
-                },
-                options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { color: '#f9fafb' } } }, scales: { y: { ticks: { color: '#9ca3af' } }, x: { ticks: { color: '#9ca3af' } } } }
-            });
+            violationChart = new Chart(violCtx, { type: 'line', data: { labels: ['Week 1', 'Week 2', 'Week 3', 'Week 4'], datasets: [{ label: 'Violations', data: [data.violations?.last7Days || 0, 0, 0, data.violations?.last30Days || 0], borderColor: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', fill: true, tension: 0.4 }] }, options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { labels: { color: '#f9fafb' } } }, scales: { y: { ticks: { color: '#9ca3af' } }, x: { ticks: { color: '#9ca3af' } } } } });
         }
-    } catch (e) {
-        console.error("loadStats error:", e);
+    } catch (e) { console.error("loadStats error:", e); }
+}
+
+async function loadDeviceRequests() {
+    const statusFilter = document.getElementById("requestStatusFilter")?.value || "";
+    try { const data = await API.call("/admin/device-requests" + (statusFilter ? `?status=${statusFilter}` : ""), "GET"); if (data && Array.isArray(data)) renderDeviceRequestsTable(data); } 
+    catch (e) { console.error("loadDeviceRequests error:", e); }
+}
+
+async function loadAdminUsers() {
+    try { const data = await API.call("/admin/users", "GET"); if (data && Array.isArray(data)) { document.getElementById("adminUsersList").innerHTML = data.map(u => `<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);"><div><strong>${escapeHtml(u.username)}</strong><br><small class="text-muted">${escapeHtml(u.role)}</small></div>${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${escapeHtml(u.username)}')">Delete</button>` : '<span class="text-muted">Default</span>'}</div>`).join(''); } } 
+    catch (e) { console.error("loadAdminUsers error:", e); }
+}
+
+// ================= RENDER FUNCTIONS =================
+function renderCompaniesTable() {
+    const tbody = document.querySelector("#companiesTable tbody");
+    if (!tbody) return;
+    const search = document.getElementById("companySearch")?.value.toLowerCase() || "";
+    const filtered = companiesData.filter(c => (c.companyName || "").toLowerCase().includes(search));
+    tbody.innerHTML = "";
+    for (const company of filtered) {
+        const isExpired = company.expiredAt < Date.now();
+        const packageClass = company.package === "PRO" ? "badge-pro" : (company.package === "BASIC" ? "badge-basic" : "badge-demo");
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><strong>${escapeHtml(company.companyName)}</strong><br><small class="text-muted">${escapeHtml(company.pic || "-")}</small></td><td><code class="code">${escapeHtml(company.licenseKey)}</code></td><td><span class="badge ${packageClass}">${escapeHtml(company.package)}</span></td><td>${company.currentDevices || 0} / ${company.maxDevices}</td><td>${company.maxDevices}</td><td class="${isExpired ? "text-danger" : ""}">${formatDate(company.expiredAt)}</td><td><span class="badge ${isExpired ? "badge-expired" : "badge-active"}">${isExpired ? "EXPIRED" : (company.status || "ACTIVE")}</span></td><td><button class="btn btn-info btn-sm" onclick="viewCompanyDetails('${company.id}')">Detail</button> <button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button> <button class="btn btn-primary btn-sm" onclick="openUpgradeModal('${company.id}', '${escapeHtml(company.companyName)}', '${company.package}')">Upgrade</button> <button class="btn btn-danger btn-sm" onclick="deleteCompany('${company.id}')">Delete</button></td>`;
+    }
+}
+
+function renderExpiringTable() {
+    const tbody = document.querySelector("#expiringTable tbody");
+    if (!tbody) return;
+    const now = Date.now();
+    const expiringSoon = companiesData.filter(c => c.expiredAt < now + 7 * 86400000).sort((a, b) => a.expiredAt - b.expiredAt).slice(0, 10);
+    tbody.innerHTML = "";
+    for (const company of expiringSoon) {
+        const isExpired = company.expiredAt < now;
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><strong>${escapeHtml(company.companyName)}</strong></td><td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(company.package)}</span></td><td class="${isExpired ? 'text-danger' : 'text-warning'}">${formatDate(company.expiredAt)}</td><td>${company.currentDevices || 0}</td><td><span class="badge ${isExpired ? 'badge-expired' : 'badge-warning'}">${isExpired ? 'EXPIRED' : 'Expiring Soon'}</span></td><td><button class="btn btn-warning btn-sm" onclick="openRenewModal('${company.id}', '${escapeHtml(company.companyName)}')">Renew</button></td>`;
     }
 }
 
@@ -1591,349 +1053,74 @@ function renderRecentLicensesTable() {
     if (!tbody) return;
     const recent = [...companiesData].sort((a, b) => b.createdAt - a.createdAt).slice(0, 10);
     tbody.innerHTML = "";
-    
-    for (const company of recent.slice(0, 10)) {
+    for (const company of recent) {
         const row = tbody.insertRow();
-        row.innerHTML = `
-            <td>${escapeHtml(company.companyName)}</span></td>
-            <td><code class="code">${escapeHtml(company.licenseKey)}</code></td>
-            <td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(company.package)}</span></span></span></td>
-            <td>${formatDate(company.createdAt)}</span></td>
-        `;
+        row.innerHTML = `<td>${escapeHtml(company.companyName)}</td><td><code class="code">${escapeHtml(company.licenseKey)}</code></td><td><span class="badge ${company.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(company.package)}</span></td><td>${formatDate(company.createdAt)}</td>`;
     }
 }
 
-async function generateLicense() {
-    const companyName = document.getElementById("genCompanyName").value;
-    const pic = document.getElementById("genPic").value;
-    const phone = document.getElementById("genPhone").value;
-    const email = document.getElementById("genEmail").value;
-    const pkg = document.getElementById("genPackage").value;
-    const maxDevices = document.getElementById("genMaxDevices").value;
-    const address = document.getElementById("genAddress").value;
-    const notes = document.getElementById("genNotes").value;
-    
-    if (!companyName || !pic || !phone || !email) {
-        showToast("Please fill all required fields", "error");
-        return;
-    }
-    
-    showToast("Generating license...", "info");
-    
-    try {
-        await SAFE_ACTION("/generate-license", {
-            companyName, pic, phone, email, address,
-            package: pkg,
-            customMaxDevices: maxDevices ? parseInt(maxDevices) : null,
-            notes
-        }, reloadAdminAllSafe);
-        
-        showToast(`License generated for ${companyName}`, "success");
-        
-        document.getElementById("genCompanyName").value = "";
-        document.getElementById("genPic").value = "";
-        document.getElementById("genPhone").value = "";
-        document.getElementById("genEmail").value = "";
-        document.getElementById("genAddress").value = "";
-        document.getElementById("genNotes").value = "";
-        document.getElementById("genMaxDevices").value = "";
-    } catch (e) {
-        showToast(e.message, "error");
+function renderDevicesTable() {
+    const tbody = document.querySelector("#devicesTable tbody");
+    if (!tbody) return;
+    const search = document.getElementById("deviceSearch")?.value.toLowerCase() || "";
+    const statusFilter = document.getElementById("deviceStatusFilter")?.value || "";
+    const filtered = devicesData.filter(d => ((d.deviceId || "").toLowerCase().includes(search) || (d.companyName || "").toLowerCase().includes(search) || (d.deviceName || "").toLowerCase().includes(search)) && (statusFilter === "" || d.status === statusFilter));
+    tbody.innerHTML = "";
+    for (const device of filtered) {
+        let statusClass = "badge-active";
+        if (device.status === "PENDING_APPROVAL") statusClass = "badge-pending";
+        if (device.status === "SUSPENDED") statusClass = "badge-suspended";
+        if (device.status === "BANNED") statusClass = "badge-banned";
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><code class="code">${escapeHtml(device.deviceId || "-")}</code></td><td>${escapeHtml(device.deviceName || "-")}</td><td><strong>${escapeHtml(device.companyName || "-")}</strong></td><td><code class="code">${escapeHtml(device.licenseKey || "-")}</code></td><td><span class="badge ${statusClass}">${escapeHtml(device.status)}</span></td><td>${formatDateTime(device.lastSeen)}</td><td>${device.violations?.length || 0}</td><td><button class="btn btn-info btn-sm" onclick="viewDeviceDetails('${device.deviceId}')">Detail</button> <button class="btn btn-danger btn-sm" onclick="deleteDevice('${device.deviceId}')">Delete</button></td>`;
     }
 }
 
-async function approveDevice(deviceId, approve) {
-    await SAFE_ACTION("/approve-device", { deviceId, approve }, reloadAdminAllSafe);
-    showToast(`Device ${approve ? 'approved' : 'rejected'}`, "success");
-}
-
-async function deleteDevice(deviceId) {
-    if (!confirm("Delete this device? This action cannot be undone.")) return;
-    await SAFE_ACTION("/delete-device", { deviceId, reason: "Deleted by admin" }, reloadAdminAllSafe);
-    showToast("Device deleted", "success");
-}
-
-async function deleteCompany(companyId) {
-    if (!confirm("Delete this company and all its devices? This action cannot be undone.")) return;
-    await SAFE_ACTION("/delete-company", { companyId, reason: "Deleted by admin" }, reloadAdminAllSafe);
-    showToast("Company deleted", "success");
-}
-
-async function markInvoicePaid(invoiceId) {
-    if (!confirm("Mark this invoice as paid?")) return;
-    await SAFE_ACTION("/mark-invoice-paid", { invoiceId, paymentMethod: "MANUAL" }, reloadAdminAllSafe);
-    showToast("Invoice marked as paid", "success");
-}
-
-async function checkExpiredNow() {
-    showToast("Checking expired licenses...", "info");
-    try {
-        await API.call("/cron/check-expired", "GET");
-        showToast("Expired check completed", "success");
-        await reloadAdminAllSafe();
-    } catch (e) {
-        showToast(e.message, "error");
+function renderPendingRequests() {
+    const pending = devicesData.filter(d => d.status === "PENDING_APPROVAL");
+    const tbody = document.querySelector("#requestsTable tbody");
+    if (!tbody) return;
+    document.getElementById("pendingCount").innerText = pending.length;
+    tbody.innerHTML = "";
+    for (const device of pending) {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><strong>${escapeHtml(device.companyName || '-')}</strong></td><td><code class="code">${device.deviceId ? escapeHtml(device.deviceId.substring(0, 16)) : '-'}...</code></td><td>${escapeHtml(device.deviceName || '-')}</td><td>${formatDateTime(device.approvalRequest?.requestedAt || device.firstSeen)}</td><td><button class="btn btn-success btn-sm" onclick="approveDevice('${escapeHtml(device.deviceId)}', true)">✅ Approve</button> <button class="btn btn-danger btn-sm" onclick="approveDevice('${escapeHtml(device.deviceId)}', false)">❌ Reject</button></td>`;
     }
 }
 
-async function resetSystem() {
-    if (!confirm("⚠️ WARNING: Ini akan MENGHAPUS SEMUA DATA.\nLanjut?")) return;
-    const confirm2 = prompt("Ketik 'RESET TOTAL' untuk konfirmasi:");
-    if (confirm2 !== "RESET TOTAL") { showToast("Dibatalkan", "warning"); return; }
-    showToast("Reset system...", "warning");
-    
-    try {
-        await API.call("/admin/reset-system", "POST", { confirm: "RESET_TOTAL" });
-        showToast("🔥 SYSTEM RESET BERHASIL", "success");
-        setTimeout(() => location.reload(), 1500);
-    } catch (e) {
-        showToast(e.message, "error");
+function renderViolationsTable() {
+    const tbody = document.querySelector("#violationsTable tbody");
+    if (!tbody) return;
+    const search = document.getElementById("violationSearch")?.value.toLowerCase() || "";
+    const typeFilter = document.getElementById("violationTypeFilter")?.value || "";
+    const violations = activityData.filter(a => a.type === "VIOLATION_REPORTED").filter(v => (v.companyName || "").toLowerCase().includes(search) || (v.deviceId || "").toLowerCase().includes(search)).filter(v => typeFilter === "" || v.violationType === typeFilter).slice(0, 200);
+    tbody.innerHTML = "";
+    for (const v of violations) {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><strong>${escapeHtml(v.companyName || '-')}</strong></td><td><code class="code">${v.deviceId ? escapeHtml(v.deviceId.substring(0, 12)) : '-'}...</code></td><td><span class="badge badge-danger">${escapeHtml(v.violationType || 'Unknown')}</span></td><td>${escapeHtml(v.details || '-')}</td><td>${formatDateTime(v.timestamp)}</td><td><button class="btn btn-warning btn-sm" onclick="viewViolationDetails('${v.id}')">View</button></td>`;
     }
 }
 
-let currentRenewCompanyId = null;
-function openRenewModal(companyId, companyName) {
-    currentRenewCompanyId = companyId;
-    document.getElementById("renewCompanyName").value = companyName;
-    document.getElementById("renewModal").classList.add("active");
-}
-
-async function confirmRenew() {
-    const months = parseInt(document.getElementById("renewMonths").value);
-    const paymentMethod = document.getElementById("renewPaymentMethod").value;
-    const company = companiesData.find(c => c.id === currentRenewCompanyId);
-    let amount = company.package === 'BASIC' ? 500000 * months : 2000000 * months;
-    if (months >= 3) amount = amount * 0.95;
-    if (months >= 6) amount = amount * 0.90;
-    if (months >= 12) amount = amount * 0.85;
-    if (!confirm(`Renew license for ${months} month(s) with amount ${formatCurrency(amount)}?`)) return;
-    
-    await SAFE_ACTION("/renew-license", { 
-        companyId: currentRenewCompanyId, 
-        months, 
-        amount: Math.round(amount), 
-        paymentMethod 
-    }, reloadAdminAllSafe);
-    
-    showToast(`License renewed for ${months} months`, "success");
-    closeModal("renewModal");
-}
-
-let currentUpgradeCompanyId = null;
-function openUpgradeModal(companyId, companyName, currentPackage) {
-    currentUpgradeCompanyId = companyId;
-    document.getElementById("upgradeCompanyName").value = companyName;
-    document.getElementById("upgradeCurrentPackage").value = currentPackage;
-    const select = document.getElementById("upgradePackage");
-    select.innerHTML = currentPackage === "PRO" ? '<option value="BASIC">BASIC - 10 devices (Downgrade)</option>' : '<option value="BASIC">BASIC - 10 devices</option><option value="PRO">PRO - Unlimited devices (Upgrade)</option>';
-    document.getElementById("upgradeModal").classList.add("active");
-}
-
-async function confirmUpgrade() {
-    const newPackage = document.getElementById("upgradePackage").value;
-    const maxDevices = document.getElementById("upgradeMaxDevices").value;
-    const notes = document.getElementById("upgradeNotes").value;
-    
-    await SAFE_ACTION("/update-package", { 
-        companyId: currentUpgradeCompanyId, 
-        newPackage, 
-        customMaxDevices: maxDevices ? parseInt(maxDevices) : null, 
-        notes 
-    }, reloadAdminAllSafe);
-    
-    showToast(`Package upgraded to ${newPackage}`, "success");
-    closeModal("upgradeModal");
-}
-
-async function viewCompanyDetails(companyId) {
-    try {
-        const data = await API.call(`/admin/company/${companyId}`, "GET");
-        if (data) {
-            document.getElementById("companyDetailContent").innerHTML = `
-                <div class="grid-2" style="gap: 16px;">
-                    <div><strong>Company Name:</strong><br>${escapeHtml(data.companyName)}</div>
-                    <div><strong>License Key:</strong><br><code>${escapeHtml(data.licenseKey)}</code></div>
-                    <div><strong>PIC:</strong><br>${escapeHtml(data.pic)}</div>
-                    <div><strong>Phone:</strong><br>${escapeHtml(data.phone)}</div>
-                    <div><strong>Email:</strong><br>${escapeHtml(data.email)}</div>
-                    <div><strong>Package:</strong><br><span class="badge ${data.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(data.package)}</span></div>
-                    <div><strong>Devices:</strong><br>${data.stats?.totalDevices || 0} / ${data.maxDevices}</div>
-                    <div><strong>Expiry:</strong><br class="${data.expiredAt < Date.now() ? 'text-danger' : ''}">${formatDate(data.expiredAt)}</div>
-                    <div><strong>Status:</strong><br><span class="badge ${data.expiredAt < Date.now() ? 'badge-expired' : 'badge-active'}">${data.expiredAt < Date.now() ? 'EXPIRED' : 'ACTIVE'}</span></div>
-                    <div><strong>Created:</strong><br>${formatDate(data.createdAt)}</div>
-                </div>
-                <hr style="border-color: var(--border); margin: 16px 0;">
-                <h4 style="margin-bottom: 12px;">📱 Devices (${data.devices?.length || 0})</h4>
-                <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>${(data.devices || []).map(d => `<td><code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td><td>${escapeHtml(d.deviceName || '-')}</span></td><td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td><td>${formatDateTime(d.lastSeen)}</span></tr>`).join('') || '<td><td colspan="4" class="text-muted">No devices</span></tr>'}</tbody>}</table></div>
-            `;
-            document.getElementById("companyDetailModal").classList.add("active");
-        }
-    } catch (e) {
-        showToast(e.message, "error");
+function renderRecentViolations() {
+    const tbody = document.querySelector("#recentViolationsTable tbody");
+    if (!tbody) return;
+    const violations = activityData.filter(a => a.type === "VIOLATION_REPORTED").slice(0, 20);
+    tbody.innerHTML = "";
+    for (const v of violations) {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><strong>${escapeHtml(v.companyName || '-')}</strong></td><td><code class="code">${v.deviceId ? escapeHtml(v.deviceId.substring(0, 12)) : '-'}...</code></td><td><span class="badge badge-danger">${escapeHtml(v.violationType || 'Unknown')}</span></td><td>${formatDateTime(v.timestamp)}</td><td><span class="badge badge-warning">Reported</span></td>`;
     }
 }
 
-function viewDeviceDetails(deviceId) {
-    const device = devicesData.find(d => d.deviceId === deviceId);
-    if (!device) return;
-    document.getElementById("deviceDetailContent").innerHTML = `
-        <div class="grid-2" style="gap: 16px;">
-            <div><strong>Device ID:</strong><br><code>${escapeHtml(device.deviceId)}</code></div>
-            <div><strong>Device Name:</strong><br>${escapeHtml(device.deviceName || '-')}</div>
-            <div><strong>Company:</strong><br>${escapeHtml(device.companyName)}</div>
-            <div><strong>License Key:</strong><br><code>${escapeHtml(device.licenseKey)}</code></div>
-            <div><strong>Status:</strong><br><span class="badge ${device.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(device.status)}</span></div>
-            <div><strong>First Seen:</strong><br>${formatDateTime(device.firstSeen)}</div>
-            <div><strong>Last Seen:</strong><br>${formatDateTime(device.lastSeen)}</div>
-            <div><strong>Violations:</strong><br>${device.violations?.length || 0}</div>
-        </div>
-        <hr style="border-color: var(--border); margin: 16px 0;">
-        <h4 style="margin-bottom: 12px;">⚠️ Violation History</h4>
-        <div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<td><span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</span></td><td>${formatDateTime(v.timestamp)}</span></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}</tbody>}</table></div>
-    `;
-    document.getElementById("deviceDetailModal").classList.add("active");
-}
-
-async function addAdminUser() {
-    const username = document.getElementById("newAdminUser").value;
-    const password = document.getElementById("newAdminPass").value;
-    const role = document.getElementById("newAdminRole").value;
-    if (!username || !password) { showToast("Username and password required", "error"); return; }
-    
-    try {
-        await SAFE_ACTION("/admin/add-user", { username, password, role }, reloadAdminAllSafe);
-        showToast("Admin user added", "success");
-        document.getElementById("newAdminUser").value = "";
-        document.getElementById("newAdminPass").value = "";
-        await loadAdminUsers();
-    } catch (e) {
-        showToast(e.message, "error");
-    }
-}
-
-async function loadAdminUsers() {
-    try {
-        const data = await API.call("/admin/users", "GET");
-        if (data && Array.isArray(data)) {
-            const container = document.getElementById("adminUsersList");
-            container.innerHTML = data.map(u => `<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);"><div><strong>${escapeHtml(u.username)}</strong><br><small class="text-muted">${escapeHtml(u.role)}</small></div>${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${escapeHtml(u.username)}')">Delete</button>` : '<span class="text-muted">Default</span>'}</div>`).join('');
-        }
-    } catch (e) {
-        console.error("loadAdminUsers error:", e);
-    }
-}
-
-async function deleteAdminUser(username) {
-    if (!confirm(`Delete user ${username}?`)) return;
-    await SAFE_ACTION("/admin/delete-user", { username }, reloadAdminAllSafe);
-    showToast("User deleted", "success");
-    await loadAdminUsers();
-}
-
-async function savePricing() {
-    const pricing = {
-        BASIC: { price: parseInt(document.getElementById("priceBasic").value), maxDevices: 10, extraDeviceFee: parseInt(document.getElementById("extraDeviceFee").value) },
-        PRO: { price: parseInt(document.getElementById("pricePro").value), maxDevices: 999, extraDeviceFee: 0 }
-    };
-    const tax = parseInt(document.getElementById("taxRate").value);
-    
-    try {
-        await API.call("/admin/settings", "POST", { pricing, general: { tax } });
-        showToast("Pricing saved", "success");
-    } catch (e) {
-        showToast(e.message, "error");
-    }
-}
-
-function backupData() {
-    const data = { companies: companiesData, devices: devicesData, activity: activityData, invoices: invoicesData, exportedAt: Date.now() };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `vms_backup_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast("Backup downloaded", "success");
-}
-
-function exportCompaniesToExcel() {
-    const wsData = companiesData.map(c => ({
-        "Company Name": c.companyName,
-        "License Key": c.licenseKey,
-        "Package": c.package,
-        "PIC": c.pic,
-        "Phone": c.phone,
-        "Email": c.email,
-        "Max Devices": c.maxDevices,
-        "Current Devices": c.currentDevices || 0,
-        "Expiry Date": formatDate(c.expiredAt),
-        "Status": c.expiredAt < Date.now() ? "EXPIRED" : "ACTIVE",
-        "Created At": formatDate(c.createdAt)
-    }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Companies");
-    XLSX.writeFile(wb, `vms_companies_${Date.now()}.xlsx`);
-    showToast("Export completed", "success");
-}
-
-function exportDevicesToExcel() {
-    const wsData = devicesData.map(d => ({
-        "Device ID": d.deviceId,
-        "Device Name": d.deviceName,
-        "Company": d.companyName,
-        "License Key": d.licenseKey,
-        "Status": d.status,
-        "First Seen": formatDateTime(d.firstSeen),
-        "Last Seen": formatDateTime(d.lastSeen),
-        "Violations": d.violations?.length || 0
-    }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Devices");
-    XLSX.writeFile(wb, `vms_devices_${Date.now()}.xlsx`);
-    showToast("Export completed", "success");
-}
-
-function exportInvoicesToExcel() {
-    const wsData = invoicesData.map(i => ({
-        "Invoice #": i.id,
-        "Company": i.companyName,
-        "Amount": i.amount,
-        "Months": i.months,
-        "Status": i.status,
-        "Created": formatDate(i.createdAt),
-        "Paid At": i.paidAt ? formatDate(i.paidAt) : "-"
-    }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Invoices");
-    XLSX.writeFile(wb, `vms_invoices_${Date.now()}.xlsx`);
-    showToast("Export completed", "success");
-}
-
-function clearViolationsConfirm() {
-    if (!confirm("⚠️ Clear all violation logs? This action cannot be undone.")) return;
-    showToast("Violations cleared (simulated)", "info");
-}
-
-function openGenerateLicenseModal() {
-    const licenseNav = document.querySelector('.nav-item[data-tab="license"]');
-    if (licenseNav) licenseNav.click();
-}
-
-function refreshData() { reloadAdminAllSafe(); showToast("Data refreshed", "success"); }
-
-function closeModal(modalId) { const modal = document.getElementById(modalId); if (modal) modal.classList.remove("active"); }
-
-async function loadDeviceRequests() {
-    const statusFilter = document.getElementById("requestStatusFilter")?.value || "";
-    try {
-        const data = await API.call("/admin/device-requests" + (statusFilter ? `?status=${statusFilter}` : ""), "GET");
-        if (data && Array.isArray(data)) renderDeviceRequestsTable(data);
-    } catch (e) {
-        console.error("loadDeviceRequests error:", e);
+function renderInvoicesTable() {
+    const tbody = document.querySelector("#invoicesTable tbody");
+    if (!tbody) return;
+    const statusFilter = document.getElementById("invoiceStatusFilter")?.value || "";
+    const filtered = invoicesData.filter(i => statusFilter === "" || i.status === statusFilter);
+    tbody.innerHTML = "";
+    for (const inv of filtered.slice(0, 100)) {
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><code class="code">${escapeHtml(inv.id)}</code></td><td><strong>${escapeHtml(inv.companyName)}</strong></td><td>${formatCurrency(inv.amount)}</td><td>${inv.months} month(s)</td><td><span class="badge ${inv.status === 'PAID' ? 'badge-active' : 'badge-pending'}">${escapeHtml(inv.status)}</span></td><td>${formatDate(inv.createdAt)}</td><td>${inv.status === 'UNPAID' ? `<button class="btn btn-success btn-sm" onclick="markInvoicePaid('${inv.id}')">Mark Paid</button>` : '-'}</td>`;
     }
 }
 
@@ -1942,42 +1129,87 @@ function renderDeviceRequestsTable(requests) {
     if (!tbody) return;
     tbody.innerHTML = "";
     for (const req of requests) {
-        const row = tbody.insertRow();
         let statusClass = "badge-pending";
         if (req.status === "WAITING_PAYMENT") statusClass = "badge-warning";
         if (req.status === "PAID") statusClass = "badge-active";
         if (req.status === "REJECTED") statusClass = "badge-expired";
-        row.innerHTML = `
-            <td><strong>${escapeHtml(req.companyName)}</strong></td>
-            <td>${escapeHtml(req.deviceName)}</span></span></span></td>
-            <td>Rp ${(req.fee || 0).toLocaleString()}</span></span></span></td>
-            <td><span class="badge ${statusClass}">${escapeHtml(req.status)}</span></span></span></span></td>
-            <td>${formatDate(req.requestedAt)}</span></span></span></td>
-            <td>${req.status === "PENDING" ? `<button class="btn btn-success btn-sm" onclick="approveDeviceRequestFee('${req.id}')">✅ Approve & Invoice</button><button class="btn btn-danger btn-sm" onclick="rejectDeviceRequest('${req.id}')">❌ Reject</button>` : (req.status === "WAITING_PAYMENT" ? '<span class="text-muted">Waiting client payment</span>' : (req.status === "PAID" ? '<span class="text-success">Device activated</span>' : "-"))}</span></span></span></span></td>
-        `;
+        const row = tbody.insertRow();
+        row.innerHTML = `<td><strong>${escapeHtml(req.companyName)}</strong></td><td>${escapeHtml(req.deviceName)}</td><td>Rp ${(req.fee || 0).toLocaleString()}</td><td><span class="badge ${statusClass}">${escapeHtml(req.status)}</span></td><td>${formatDate(req.requestedAt)}</td><td>${req.status === "PENDING" ? `<button class="btn btn-success btn-sm" onclick="approveDeviceRequestFee('${req.id}')">✅ Approve & Invoice</button> <button class="btn btn-danger btn-sm" onclick="rejectDeviceRequest('${req.id}')">❌ Reject</button>` : (req.status === "WAITING_PAYMENT" ? '<span class="text-muted">Waiting client payment</span>' : (req.status === "PAID" ? '<span class="text-success">Device activated</span>' : "-"))}</td>`;
     }
 }
 
-async function approveDeviceRequestFee(requestId) {
-    if (!confirm("Approve this device request? An invoice will be generated for the client.")) return;
-    await SAFE_ACTION("/approve-device-request", { requestId, approve: true }, reloadAdminAllSafe);
-    showToast("Request approved. Invoice generated.", "success");
+// ================= ACTIONS =================
+async function generateLicense() {
+    const companyName = document.getElementById("genCompanyName").value, pic = document.getElementById("genPic").value, phone = document.getElementById("genPhone").value, email = document.getElementById("genEmail").value, pkg = document.getElementById("genPackage").value, maxDevices = document.getElementById("genMaxDevices").value, address = document.getElementById("genAddress").value, notes = document.getElementById("genNotes").value;
+    if (!companyName || !pic || !phone || !email) { showToast("Please fill all required fields", "error"); return; }
+    showToast("Generating license...", "info");
+    try {
+        await SAFE_ACTION("/generate-license", { companyName, pic, phone, email, address, package: pkg, customMaxDevices: maxDevices ? parseInt(maxDevices) : null, notes }, reloadAdminAllSafe);
+        showToast(`License generated for ${companyName}`, "success");
+        document.getElementById("genCompanyName").value = ""; document.getElementById("genPic").value = ""; document.getElementById("genPhone").value = ""; document.getElementById("genEmail").value = ""; document.getElementById("genAddress").value = ""; document.getElementById("genNotes").value = ""; document.getElementById("genMaxDevices").value = "";
+    } catch (e) { showToast(e.message, "error"); }
 }
 
-async function rejectDeviceRequest(requestId) {
-    const reason = prompt("Reason for rejection:");
-    if (reason === null) return;
-    await SAFE_ACTION("/approve-device-request", { requestId, approve: false, notes: reason }, reloadAdminAllSafe);
-    showToast("Request rejected", "success");
+async function approveDevice(deviceId, approve) { await SAFE_ACTION("/approve-device", { deviceId, approve }, reloadAdminAllSafe); showToast(`Device ${approve ? 'approved' : 'rejected'}`, "success"); }
+async function deleteDevice(deviceId) { if (!confirm("Delete this device?")) return; await SAFE_ACTION("/delete-device", { deviceId, reason: "Deleted by admin" }, reloadAdminAllSafe); showToast("Device deleted", "success"); }
+async function deleteCompany(companyId) { if (!confirm("Delete this company?")) return; await SAFE_ACTION("/delete-company", { companyId, reason: "Deleted by admin" }, reloadAdminAllSafe); showToast("Company deleted", "success"); }
+async function markInvoicePaid(invoiceId) { if (!confirm("Mark this invoice as paid?")) return; await SAFE_ACTION("/mark-invoice-paid", { invoiceId, paymentMethod: "MANUAL" }, reloadAdminAllSafe); showToast("Invoice marked as paid", "success"); }
+async function approveDeviceRequestFee(requestId) { if (!confirm("Approve this device request?")) return; await SAFE_ACTION("/approve-device-request", { requestId, approve: true }, reloadAdminAllSafe); showToast("Request approved. Invoice generated.", "success"); }
+async function rejectDeviceRequest(requestId) { const reason = prompt("Reason for rejection:"); if (reason === null) return; await SAFE_ACTION("/approve-device-request", { requestId, approve: false, notes: reason }, reloadAdminAllSafe); showToast("Request rejected", "success"); }
+async function addAdminUser() {
+    const username = document.getElementById("newAdminUser").value, password = document.getElementById("newAdminPass").value, role = document.getElementById("newAdminRole").value;
+    if (!username || !password) { showToast("Username and password required", "error"); return; }
+    try { await SAFE_ACTION("/admin/add-user", { username, password, role }, reloadAdminAllSafe); showToast("Admin user added", "success"); document.getElementById("newAdminUser").value = ""; document.getElementById("newAdminPass").value = ""; } catch (e) { showToast(e.message, "error"); }
 }
+async function deleteAdminUser(username) { if (!confirm(`Delete user ${username}?`)) return; await SAFE_ACTION("/admin/delete-user", { username }, reloadAdminAllSafe); showToast("User deleted", "success"); }
+async function savePricing() {
+    const pricing = { BASIC: { price: parseInt(document.getElementById("priceBasic").value), maxDevices: 10, extraDeviceFee: parseInt(document.getElementById("extraDeviceFee").value) }, PRO: { price: parseInt(document.getElementById("pricePro").value), maxDevices: 999, extraDeviceFee: 0 } };
+    const tax = parseInt(document.getElementById("taxRate").value);
+    try { await API.call("/admin/settings", "POST", { pricing, general: { tax } }); showToast("Pricing saved", "success"); } catch (e) { showToast(e.message, "error"); }
+}
+async function checkExpiredNow() { showToast("Checking expired licenses...", "info"); try { await API.call("/cron/check-expired", "GET"); showToast("Expired check completed", "success"); await reloadAdminAllSafe(); } catch (e) { showToast(e.message, "error"); } }
+async function resetSystem() { if (!confirm("⚠️ WARNING: Ini akan MENGHAPUS SEMUA DATA.\nLanjut?")) return; const confirm2 = prompt("Ketik 'RESET TOTAL' untuk konfirmasi:"); if (confirm2 !== "RESET TOTAL") { showToast("Dibatalkan", "warning"); return; } showToast("Reset system...", "warning"); try { await API.call("/admin/reset-system", "POST", { confirm: "RESET_TOTAL" }); showToast("🔥 SYSTEM RESET BERHASIL", "success"); setTimeout(() => location.reload(), 1500); } catch (e) { showToast(e.message, "error"); } }
+function backupData() { const data = { companies: companiesData, devices: devicesData, activity: activityData, invoices: invoicesData, exportedAt: Date.now() }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `vms_backup_${Date.now()}.json`; a.click(); URL.revokeObjectURL(url); showToast("Backup downloaded", "success"); }
+function exportCompaniesToExcel() { const wsData = companiesData.map(c => ({ "Company Name": c.companyName, "License Key": c.licenseKey, "Package": c.package, "PIC": c.pic, "Phone": c.phone, "Email": c.email, "Max Devices": c.maxDevices, "Current Devices": c.currentDevices || 0, "Expiry Date": formatDate(c.expiredAt), "Status": c.expiredAt < Date.now() ? "EXPIRED" : "ACTIVE", "Created At": formatDate(c.createdAt) })); const ws = XLSX.utils.json_to_sheet(wsData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Companies"); XLSX.writeFile(wb, `vms_companies_${Date.now()}.xlsx`); showToast("Export completed", "success"); }
+function exportDevicesToExcel() { const wsData = devicesData.map(d => ({ "Device ID": d.deviceId, "Device Name": d.deviceName, "Company": d.companyName, "License Key": d.licenseKey, "Status": d.status, "First Seen": formatDateTime(d.firstSeen), "Last Seen": formatDateTime(d.lastSeen), "Violations": d.violations?.length || 0 })); const ws = XLSX.utils.json_to_sheet(wsData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Devices"); XLSX.writeFile(wb, `vms_devices_${Date.now()}.xlsx`); showToast("Export completed", "success"); }
+function exportInvoicesToExcel() { const wsData = invoicesData.map(i => ({ "Invoice #": i.id, "Company": i.companyName, "Amount": i.amount, "Months": i.months, "Status": i.status, "Created": formatDate(i.createdAt), "Paid At": i.paidAt ? formatDate(i.paidAt) : "-" })); const ws = XLSX.utils.json_to_sheet(wsData); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Invoices"); XLSX.writeFile(wb, `vms_invoices_${Date.now()}.xlsx`); showToast("Export completed", "success"); }
+function clearViolationsConfirm() { if (!confirm("⚠️ Clear all violation logs?")) return; showToast("Violations cleared (simulated)", "info"); }
+function openGenerateLicenseModal() { const licenseNav = document.querySelector('.nav-item[data-tab="license"]'); if (licenseNav) licenseNav.click(); }
+function refreshData() { reloadAdminAllSafe(); showToast("Data refreshed", "success"); }
+function closeModal(modalId) { const modal = document.getElementById(modalId); if (modal) modal.classList.remove("active"); }
+
+let currentRenewCompanyId = null;
+function openRenewModal(companyId, companyName) { currentRenewCompanyId = companyId; document.getElementById("renewCompanyName").value = companyName; document.getElementById("renewModal").classList.add("active"); }
+async function confirmRenew() {
+    const months = parseInt(document.getElementById("renewMonths").value), paymentMethod = document.getElementById("renewPaymentMethod").value;
+    const company = companiesData.find(c => c.id === currentRenewCompanyId);
+    let amount = company.package === 'BASIC' ? 500000 * months : 2000000 * months;
+    if (months >= 3) amount *= 0.95; if (months >= 6) amount *= 0.90; if (months >= 12) amount *= 0.85;
+    if (!confirm(`Renew license for ${months} month(s) with amount ${formatCurrency(amount)}?`)) return;
+    await SAFE_ACTION("/renew-license", { companyId: currentRenewCompanyId, months, amount: Math.round(amount), paymentMethod }, reloadAdminAllSafe);
+    showToast(`License renewed for ${months} months`, "success"); closeModal("renewModal");
+}
+
+let currentUpgradeCompanyId = null;
+function openUpgradeModal(companyId, companyName, currentPackage) { currentUpgradeCompanyId = companyId; document.getElementById("upgradeCompanyName").value = companyName; document.getElementById("upgradeCurrentPackage").value = currentPackage; const select = document.getElementById("upgradePackage"); select.innerHTML = currentPackage === "PRO" ? '<option value="BASIC">BASIC - 10 devices (Downgrade)</option>' : '<option value="BASIC">BASIC - 10 devices</option><option value="PRO">PRO - Unlimited devices (Upgrade)</option>'; document.getElementById("upgradeModal").classList.add("active"); }
+async function confirmUpgrade() {
+    const newPackage = document.getElementById("upgradePackage").value, maxDevices = document.getElementById("upgradeMaxDevices").value, notes = document.getElementById("upgradeNotes").value;
+    await SAFE_ACTION("/update-package", { companyId: currentUpgradeCompanyId, newPackage, customMaxDevices: maxDevices ? parseInt(maxDevices) : null, notes }, reloadAdminAllSafe);
+    showToast(`Package upgraded to ${newPackage}`, "success"); closeModal("upgradeModal");
+}
+
+async function viewCompanyDetails(companyId) {
+    try { const data = await API.call(`/admin/company/${companyId}`, "GET"); if (data) { document.getElementById("companyDetailContent").innerHTML = `<div class="grid-2" style="gap: 16px;"><div><strong>Company Name:</strong><br>${escapeHtml(data.companyName)}</div><div><strong>License Key:</strong><br><code>${escapeHtml(data.licenseKey)}</code></div><div><strong>PIC:</strong><br>${escapeHtml(data.pic)}</div><div><strong>Phone:</strong><br>${escapeHtml(data.phone)}</div><div><strong>Email:</strong><br>${escapeHtml(data.email)}</div><div><strong>Package:</strong><br><span class="badge ${data.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(data.package)}</span></div><div><strong>Devices:</strong><br>${data.stats?.totalDevices || 0} / ${data.maxDevices}</div><div><strong>Expiry:</strong><br class="${data.expiredAt < Date.now() ? 'text-danger' : ''}">${formatDate(data.expiredAt)}</div><div><strong>Status:</strong><br><span class="badge ${data.expiredAt < Date.now() ? 'badge-expired' : 'badge-active'}">${data.expiredAt < Date.now() ? 'EXPIRED' : 'ACTIVE'}</span></div><div><strong>Created:</strong><br>${formatDate(data.createdAt)}</div></div><hr style="border-color: var(--border); margin: 16px 0;"><h4 style="margin-bottom: 12px;">📱 Devices (${data.devices?.length || 0})</h4><div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>${(data.devices || []).map(d => `<tr><td><code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td><td>${escapeHtml(d.deviceName || '-')}</td><td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td><td>${formatDateTime(d.lastSeen)}</td></tr>`).join('') || '<tr><td colspan="4" class="text-muted">No devices</td></tr>'}</tbody></table></div>`; document.getElementById("companyDetailModal").classList.add("active"); } } catch (e) { showToast(e.message, "error"); } }
+
+function viewDeviceDetails(deviceId) { const device = devicesData.find(d => d.deviceId === deviceId); if (!device) return; document.getElementById("deviceDetailContent").innerHTML = `<div class="grid-2" style="gap: 16px;"><div><strong>Device ID:</strong><br><code>${escapeHtml(device.deviceId)}</code></div><div><strong>Device Name:</strong><br>${escapeHtml(device.deviceName || '-')}</div><div><strong>Company:</strong><br>${escapeHtml(device.companyName)}</div><div><strong>License Key:</strong><br><code>${escapeHtml(device.licenseKey)}</code></div><div><strong>Status:</strong><br><span class="badge ${device.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(device.status)}</span></div><div><strong>First Seen:</strong><br>${formatDateTime(device.firstSeen)}</div><div><strong>Last Seen:</strong><br>${formatDateTime(device.lastSeen)}</div><div><strong>Violations:</strong><br>${device.violations?.length || 0}</div></div><hr style="border-color: var(--border); margin: 16px 0;"><h4 style="margin-bottom: 12px;">⚠️ Violation History</h4><div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<tr><td><span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</td><td>${formatDateTime(v.timestamp)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</td></tr>'}</tbody></table></div>`; document.getElementById("deviceDetailModal").classList.add("active"); }
+
+function viewViolationDetails(id) { showToast("Violation details: " + id, "info"); }
 
 function switchTab(tabId) {
     document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.remove("active"));
-    const targetTab = document.getElementById(`${tabId}Tab`);
-    if (targetTab) targetTab.classList.add("active");
+    document.getElementById(`${tabId}Tab`).classList.add("active");
     document.querySelectorAll(".nav-item").forEach(nav => nav.classList.remove("active"));
-    const activeNav = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
-    if (activeNav) activeNav.classList.add("active");
+    document.querySelector(`.nav-item[data-tab="${tabId}"]`).classList.add("active");
     const titles = { dashboard: "Dashboard", companies: "Companies", devices: "Devices", violations: "Violations", requests: "Pending Approvals", license: "Generate License", invoices: "Invoices", settings: "Settings", devicerequests: "Device Requests" };
     document.getElementById("pageTitle").innerText = titles[tabId] || "Dashboard";
     if (tabId === "devices") loadDevices();
@@ -1988,17 +1220,8 @@ function switchTab(tabId) {
     if (tabId === "devicerequests") loadDeviceRequests();
 }
 
-document.querySelectorAll(".nav-item").forEach(nav => {
-    nav.addEventListener("click", () => {
-        const tab = nav.dataset.tab;
-        if (tab) switchTab(tab);
-        if (window.innerWidth <= 768) document.getElementById("sidebar").classList.remove("open");
-    });
-});
-
+document.querySelectorAll(".nav-item").forEach(nav => { nav.addEventListener("click", () => { const tab = nav.dataset.tab; if (tab) switchTab(tab); if (window.innerWidth <= 768) document.getElementById("sidebar").classList.remove("open"); }); });
 document.getElementById("mobileMenuBtn").addEventListener("click", () => document.getElementById("sidebar").classList.toggle("open"));
-document.getElementById("topLogoutBtn").addEventListener("click", logout);
-document.getElementById("sidebarLogoutBtn").addEventListener("click", logout);
 document.getElementById("companySearch")?.addEventListener("input", () => renderCompaniesTable());
 document.getElementById("deviceSearch")?.addEventListener("input", () => renderDevicesTable());
 document.getElementById("deviceStatusFilter")?.addEventListener("change", () => renderDevicesTable());
@@ -2010,9 +1233,7 @@ document.getElementById("requestStatusFilter")?.addEventListener("change", () =>
 function startRefresh() { if (refreshInterval) clearInterval(refreshInterval); refreshInterval = setInterval(() => reloadAdminAllSafe(), 30000); }
 
 async function init() {
-    const savedToken = localStorage.getItem("token");
-    const savedUser = localStorage.getItem("username");
-    const savedRole = localStorage.getItem("role");
+    const savedToken = localStorage.getItem("token"), savedUser = localStorage.getItem("username"), savedRole = localStorage.getItem("role");
     if (savedToken && savedUser) {
         document.getElementById("loginOverlay").classList.add("hidden");
         document.getElementById("topUsername").innerText = savedUser;
