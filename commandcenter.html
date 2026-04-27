@@ -1233,17 +1233,38 @@ document.getElementById("requestStatusFilter")?.addEventListener("change", () =>
 function startRefresh() { if (refreshInterval) clearInterval(refreshInterval); refreshInterval = setInterval(() => reloadAdminAllSafe(), 30000); }
 
 async function init() {
-    const savedToken = localStorage.getItem("token"), savedUser = localStorage.getItem("username"), savedRole = localStorage.getItem("role");
-    if (savedToken && savedUser) {
-        document.getElementById("loginOverlay").classList.add("hidden");
-        document.getElementById("topUsername").innerText = savedUser;
-        document.getElementById("sidebarUsername").innerText = savedUser;
-        document.getElementById("topRole").innerText = savedRole || "ADMIN";
-        document.getElementById("sidebarRole").innerText = savedRole || "ADMIN";
+    const token = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("username");
+    const savedRole = localStorage.getItem("role");
+
+    // 🔴 WAJIB: kalau gak ada token, STOP TOTAL
+    if (!token) {
+        console.warn("TOKEN TIDAK ADA → STOP LOAD");
+        return;
+    }
+
+    // 🟢 UI tetap jalan kalau user ada
+    if (savedUser) {
+        document.getElementById("loginOverlay")?.classList.add("hidden");
+        document.getElementById("topUsername")?.innerText = savedUser;
+        document.getElementById("sidebarUsername")?.innerText = savedUser;
+        document.getElementById("topRole")?.innerText = savedRole || "ADMIN";
+        document.getElementById("sidebarRole")?.innerText = savedRole || "ADMIN";
+    }
+
+    try {
         startRefresh();
         await reloadAdminAllSafe();
+    } catch (e) {
+        console.error("INIT ERROR:", e.message);
     }
-    setInterval(() => { const span = document.getElementById("serverTime"); if (span) span.innerHTML = `Server Time: ${new Date().toLocaleString()}`; }, 1000);
+
+    setInterval(() => {
+        const span = document.getElementById("serverTime");
+        if (span) {
+            span.innerHTML = `Server Time: ${new Date().toLocaleString()}`;
+        }
+    }, 1000);
 }
 
 init();

@@ -7,41 +7,41 @@ async function request(path, method = "GET", body = null) {
     const token = localStorage.getItem("token");
     const license = localStorage.getItem("licenseKey");
 
+    // 🔴 STOP kalau belum login
+    if (!token) {
+        console.warn("NO TOKEN → STOP REQUEST:", path);
+        throw new Error("NO_TOKEN");
+    }
+
     try {
         const res = await fetch(`${window.CLOUD_URL}${path}`, {
             method,
             headers: {
                 "Content-Type": "application/json",
-                "x-token": token || "",
+                "x-token": token,
                 "x-license": license || ""
             },
             body: body ? JSON.stringify(body) : null
         });
 
         let data;
-
         try {
             data = await res.json();
         } catch {
-            throw new Error("INVALID_JSON_RESPONSE");
+            throw new Error("INVALID_JSON");
         }
 
-        // 🔴 HANDLE HTTP ERROR (401, 500, dll)
+        // 🔴 HTTP error
         if (!res.ok) {
-            const msg = data?.error || `HTTP_${res.status}`;
-            throw new Error(msg);
+            throw new Error(data?.error || `HTTP_${res.status}`);
         }
 
-        // 🔴 HANDLE API ERROR (format { ok:false })
+        // 🔴 API error (format { ok:false })
         if (data && data.ok === false) {
             throw new Error(data.error || "API_FAILED");
         }
 
         // 🟢 NORMALIZE RESPONSE
-        // support:
-        // 1. { ok:true, data: ... }
-        // 2. array langsung
-        // 3. object langsung
         if (data && data.data !== undefined) {
             return data.data;
         }
