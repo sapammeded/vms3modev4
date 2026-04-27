@@ -8,7 +8,12 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="api.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         :root {
             --primary: #0a0f1a;
             --primary-light: #111827;
@@ -23,37 +28,232 @@
             --border: #1f2937;
             --card-bg: #1f2937;
         }
-        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--primary); color: var(--text); overflow-x: hidden; }
-        .app { display: flex; min-height: 100vh; }
-        .sidebar { width: 280px; background: var(--primary-light); border-right: 1px solid var(--border); position: fixed; height: 100vh; overflow-y: auto; transition: transform 0.3s ease; z-index: 100; }
-        .sidebar-header { padding: 24px 20px; border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%); }
-        .sidebar-header h1 { font-size: 1.4rem; color: var(--accent); display: flex; align-items: center; gap: 8px; }
-        .sidebar-header p { font-size: 0.7rem; color: var(--text-muted); margin-top: 6px; }
-        .nav-item { display: flex; align-items: center; gap: 12px; padding: 12px 20px; margin: 6px 12px; border-radius: 12px; cursor: pointer; transition: all 0.2s; color: var(--text-muted); font-weight: 500; }
-        .nav-item:hover { background: rgba(16, 185, 129, 0.1); color: var(--text); }
-        .nav-item.active { background: var(--accent); color: white; }
-        .main-content { flex: 1; margin-left: 280px; padding: 24px 32px; min-height: 100vh; }
-        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 16px; }
-        .page-title h2 { font-size: 1.6rem; font-weight: 600; }
-        .page-title p { color: var(--text-muted); font-size: 0.85rem; margin-top: 4px; }
-        .user-info { display: flex; align-items: center; gap: 16px; background: var(--card-bg); padding: 8px 20px; border-radius: 40px; border: 1px solid var(--border); }
-        .user-info span { font-size: 0.85rem; }
-        .logout-btn { background: var(--danger); border: none; padding: 6px 14px; border-radius: 30px; color: white; cursor: pointer; font-size: 0.75rem; font-weight: 600; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: var(--card-bg); border-radius: 20px; padding: 20px; border: 1px solid var(--border); transition: transform 0.2s; }
-        .stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
-        .stat-card h4 { font-size: 0.7rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; letter-spacing: 1px; }
-        .stat-number { font-size: 2rem; font-weight: 700; color: var(--accent); }
-        .card { background: var(--card-bg); border-radius: 20px; padding: 24px; margin-bottom: 24px; border: 1px solid var(--border); }
-        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
-        .card-header h3 { font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
-        .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
-        .table-wrapper { overflow-x: auto; border-radius: 16px; }
-        table { width: 100%; border-collapse: collapse; }
-        th { text-align: left; padding: 14px 12px; background: var(--primary); color: var(--text-muted); font-weight: 600; font-size: 0.75rem; letter-spacing: 0.5px; }
-        td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
-        tr:hover { background: rgba(16, 185, 129, 0.05); }
-        .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--primary);
+            color: var(--text);
+            overflow-x: hidden;
+        }
+
+        .app {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--primary-light);
+            border-right: 1px solid var(--border);
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            transition: transform 0.3s ease;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 24px 20px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(135deg, #0a0f1a 0%, #111827 100%);
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.4rem;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sidebar-header p {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            margin: 6px 12px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .nav-item:hover {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--text);
+        }
+
+        .nav-item.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .nav-item i {
+            width: 24px;
+            font-size: 1.2rem;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            padding: 24px 32px;
+            min-height: 100vh;
+        }
+
+        .top-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .page-title h2 {
+            font-size: 1.6rem;
+            font-weight: 600;
+        }
+
+        .page-title p {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-top: 4px;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            background: var(--card-bg);
+            padding: 8px 20px;
+            border-radius: 40px;
+            border: 1px solid var(--border);
+        }
+
+        .user-info span {
+            font-size: 0.85rem;
+        }
+
+        .logout-btn {
+            background: var(--danger);
+            border: none;
+            padding: 6px 14px;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 20px;
+            border: 1px solid var(--border);
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+
+        .stat-card h4 {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            letter-spacing: 1px;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .card-header h3 {
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 16px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 14px 12px;
+            background: var(--primary);
+            color: var(--text-muted);
+            font-weight: 600;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.85rem;
+        }
+
+        tr:hover {
+            background: rgba(16, 185, 129, 0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
         .badge-active { background: #10b98120; color: #10b981; border: 1px solid #10b981; }
         .badge-expired { background: #ef444420; color: #ef4444; border: 1px solid #ef4444; }
         .badge-pending { background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b; }
@@ -62,7 +262,17 @@
         .badge-pro { background: #10b98120; color: #10b981; border: 1px solid #10b981; }
         .badge-basic { background: #3b82f620; color: #3b82f6; border: 1px solid #3b82f6; }
         .badge-demo { background: #f59e0b20; color: #f59e0b; border: 1px solid #f59e0b; }
-        .btn { padding: 8px 16px; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.8rem; }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.8rem;
+        }
+
         .btn-primary { background: var(--accent); color: white; }
         .btn-primary:hover { background: var(--accent-dark); }
         .btn-danger { background: var(--danger); color: white; }
@@ -72,41 +282,247 @@
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
         .btn-outline:hover { background: var(--border); }
         .btn-sm { padding: 4px 10px; font-size: 0.7rem; }
-        input, select, textarea { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--primary); color: var(--text); font-size: 0.85rem; width: 100%; outline: none; transition: all 0.2s; }
-        input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2); }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 0.7rem; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; letter-spacing: 0.5px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
-        .modal.active { display: flex; }
-        .modal-content { background: var(--primary-light); border-radius: 24px; padding: 28px; max-width: 550px; width: 90%; max-height: 85vh; overflow-y: auto; border: 1px solid var(--border); }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
-        .close-modal { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; cursor: pointer; }
-        .tab-pane { display: none; animation: fadeIn 0.3s ease; }
-        .tab-pane.active { display: block; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 1100; display: flex; flex-direction: column; gap: 8px; }
-        .toast { background: var(--card-bg); padding: 12px 20px; border-radius: 12px; border-left: 4px solid var(--accent); animation: slideIn 0.3s ease; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); font-size: 0.85rem; }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--primary); z-index: 2000; display: flex; align-items: center; justify-content: center; }
-        .login-overlay.hidden { display: none; }
-        .login-card { background: var(--card-bg); border-radius: 32px; padding: 40px; width: 380px; border: 1px solid var(--border); }
-        .login-card h2 { text-align: center; margin-bottom: 28px; color: var(--accent); }
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); display: flex; align-items: center; justify-content: center; z-index: 9999; }
-        .modal-box { background: var(--primary-light); padding: 24px; border-radius: 16px; width: 90%; max-width: 400px; border: 1px solid var(--border); }
-        .modal-box h3 { margin-bottom: 20px; font-size: 1.2rem; }
-        .modal-box .input { width: 100%; padding: 10px 12px; margin: 8px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--primary); color: var(--text); font-size: 0.85rem; }
-        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
-        .btn-secondary { background: var(--border); color: var(--text); }
-        @media (max-width: 768px) {
-            .sidebar { transform: translateX(-100%); position: fixed; }
-            .sidebar.open { transform: translateX(0); }
-            .main-content { margin-left: 0; padding: 16px; }
-            .grid-2 { grid-template-columns: 1fr; }
-            .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .mobile-menu-btn { display: block; position: fixed; top: 16px; left: 16px; z-index: 101; background: var(--accent); border: none; padding: 10px 14px; border-radius: 10px; color: white; cursor: pointer; font-size: 1.2rem; }
-            .top-bar { margin-top: 50px; }
+
+        input, select, textarea {
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--primary);
+            color: var(--text);
+            font-size: 0.85rem;
+            width: 100%;
+            outline: none;
+            transition: all 0.2s;
         }
-        @media (min-width: 769px) { .mobile-menu-btn { display: none; } }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--primary-light);
+            border-radius: 24px;
+            padding: 28px;
+            max-width: 550px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .tab-pane {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toast {
+            background: var(--card-bg);
+            padding: 12px 20px;
+            border-radius: 12px;
+            border-left: 4px solid var(--accent);
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-size: 0.85rem;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--primary);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-overlay.hidden {
+            display: none;
+        }
+
+        .login-card {
+            background: var(--card-bg);
+            border-radius: 32px;
+            padding: 40px;
+            width: 380px;
+            border: 1px solid var(--border);
+        }
+
+        .login-card h2 {
+            text-align: center;
+            margin-bottom: 28px;
+            color: var(--accent);
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+
+        .modal-box {
+            background: var(--primary-light);
+            padding: 24px;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            border: 1px solid var(--border);
+        }
+
+        .modal-box h3 {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .modal-box .input {
+            width: 100%;
+            padding: 10px 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--primary);
+            color: var(--text);
+            font-size: 0.85rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .btn-secondary {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                position: fixed;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+                padding: 16px;
+            }
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+            }
+            .mobile-menu-btn {
+                display: block;
+                position: fixed;
+                top: 16px;
+                left: 16px;
+                z-index: 101;
+                background: var(--accent);
+                border: none;
+                padding: 10px 14px;
+                border-radius: 10px;
+                color: white;
+                cursor: pointer;
+                font-size: 1.2rem;
+            }
+            .top-bar {
+                margin-top: 50px;
+            }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-menu-btn {
+                display: none;
+            }
+        }
+
         .text-muted { color: var(--text-muted); }
         .text-success { color: var(--accent); }
         .text-danger { color: var(--danger); }
@@ -114,7 +530,13 @@
         .mb-2 { margin-bottom: 8px; }
         .mb-3 { margin-bottom: 12px; }
         .mb-4 { margin-bottom: 20px; }
-        .code { font-family: monospace; font-size: 0.7rem; background: var(--primary); padding: 2px 6px; border-radius: 6px; }
+        .code {
+            font-family: monospace;
+            font-size: 0.7rem;
+            background: var(--primary);
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body>
@@ -123,18 +545,44 @@
 
 <div class="app">
     <div class="sidebar" id="sidebar">
-        <div class="sidebar-header"><h1>🎯 VMS COMMAND</h1><p>Enterprise Control Center v3.0</p></div>
-        <div class="nav-item active" data-tab="dashboard"><span>📊</span> Dashboard</div>
-        <div class="nav-item" data-tab="companies"><span>🏢</span> Companies</div>
-        <div class="nav-item" data-tab="devices"><span>📱</span> Devices</div>
-        <div class="nav-item" data-tab="violations"><span>⚠️</span> Violations</div>
-        <div class="nav-item" data-tab="requests"><span>📝</span> Pending Approvals</div>
-        <div class="nav-item" data-tab="license"><span>🔑</span> Generate License</div>
-        <div class="nav-item" data-tab="invoices"><span>💰</span> Invoices</div>
-        <div class="nav-item" data-tab="devicerequests"><span>💸</span> Device Requests</div>
-        <div class="nav-item" data-tab="settings"><span>⚙️</span> Settings</div>
+        <div class="sidebar-header">
+            <h1>🎯 VMS COMMAND</h1>
+            <p>Enterprise Control Center v3.0</p>
+        </div>
+        
+        <div class="nav-item active" data-tab="dashboard">
+            <span>📊</span> Dashboard
+        </div>
+        <div class="nav-item" data-tab="companies">
+            <span>🏢</span> Companies
+        </div>
+        <div class="nav-item" data-tab="devices">
+            <span>📱</span> Devices
+        </div>
+        <div class="nav-item" data-tab="violations">
+            <span>⚠️</span> Violations
+        </div>
+        <div class="nav-item" data-tab="requests">
+            <span>📝</span> Pending Approvals
+        </div>
+        <div class="nav-item" data-tab="license">
+            <span>🔑</span> Generate License
+        </div>
+        <div class="nav-item" data-tab="invoices">
+            <span>💰</span> Invoices
+        </div>
+        <div class="nav-item" data-tab="devicerequests">
+            <span>💸</span> Device Requests
+        </div>
+        <div class="nav-item" data-tab="settings">
+            <span>⚙️</span> Settings
+        </div>
+        
         <div style="margin-top: 40px; padding: 20px; border-top: 1px solid var(--border);">
-            <div class="user-info" style="margin-bottom: 12px; background: transparent; padding: 0;"><span>👤 <span id="sidebarUsername">Admin</span></span><span class="badge badge-active" id="sidebarRole">SUPER_ADMIN</span></div>
+            <div class="user-info" style="margin-bottom: 12px; background: transparent; padding: 0;">
+                <span>👤 <span id="sidebarUsername">Admin</span></span>
+                <span class="badge badge-active" id="sidebarRole">SUPER_ADMIN</span>
+            </div>
             <button class="btn btn-warning" id="sidebarChangePasswordBtn" style="width: 100%; margin-bottom: 8px;" onclick="openChangePasswordModal()">🔐 Ganti Password</button>
             <button class="btn btn-danger" id="sidebarLogoutBtn" style="width: 100%;" onclick="logout()">🚪 Logout</button>
         </div>
@@ -142,8 +590,16 @@
 
     <div class="main-content">
         <div class="top-bar">
-            <div class="page-title"><h2 id="pageTitle">Dashboard</h2><p id="pageSubtitle">Welcome back, Admin</p></div>
-            <div class="user-info"><span>👤 <span id="topUsername">Admin</span></span><span class="badge badge-active" id="topRole">SUPER_ADMIN</span><button class="btn btn-warning btn-sm" onclick="openChangePasswordModal()">🔐 Ganti Password</button><button class="logout-btn" id="topLogoutBtn" onclick="logout()">Logout</button></div>
+            <div class="page-title">
+                <h2 id="pageTitle">Dashboard</h2>
+                <p id="pageSubtitle">Welcome back, Admin</p>
+            </div>
+            <div class="user-info">
+                <span>👤 <span id="topUsername">Admin</span></span>
+                <span class="badge badge-active" id="topRole">SUPER_ADMIN</span>
+                <button class="btn btn-warning btn-sm" onclick="openChangePasswordModal()">🔐 Ganti Password</button>
+                <button class="logout-btn" id="topLogoutBtn" onclick="logout()">Logout</button>
+            </div>
         </div>
 
         <div id="dashboardTab" class="tab-pane active">
@@ -157,81 +613,266 @@
                 <div class="stat-card"><h4>Total Violations</h4><div class="stat-number" id="statTotalViolations">-</div></div>
                 <div class="stat-card"><h4>Monthly Revenue</h4><div class="stat-number" id="statMonthlyRevenue">-</div></div>
             </div>
+
             <div class="grid-2">
-                <div class="card"><div class="card-header"><h3>📊 Package Distribution</h3></div><canvas id="packageChart" height="200"></canvas></div>
-                <div class="card"><div class="card-header"><h3>📈 Violation Trends (30 Days)</h3></div><canvas id="violationChart" height="200"></canvas></div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📊 Package Distribution</h3>
+                    </div>
+                    <canvas id="packageChart" height="200"></canvas>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h3>📈 Violation Trends (30 Days)</h3>
+                    </div>
+                    <canvas id="violationChart" height="200"></canvas>
+                </div>
             </div>
-            <div class="card"><div class="card-header"><h3>🚨 Recent Violations</h3><button class="btn btn-outline btn-sm" onclick="refreshData()">🔄 Refresh</button></div><div class="table-wrapper"><table id="recentViolationsTable" style="width: 100%;"><thead><tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Time</th><th>Status</th></tr></thead><tbody></tbody></table></div></div>
-            <div class="card"><div class="card-header"><h3>⏰ Expiring Licenses (Next 7 Days)</h3></div><div class="table-wrapper"><table id="expiringTable" style="width: 100%;"><thead><tr><th>Company</th><th>Package</th><th>Expiry Date</th><th>Devices</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table></div></div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>🚨 Recent Violations</h3>
+                    <button class="btn btn-outline btn-sm" onclick="refreshData()">🔄 Refresh</button>
+                </div>
+                <div class="table-wrapper">
+                    <table id="recentViolationsTable" style="width: 100%;">
+                        <thead><tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Time</th><th>Status</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>⏰ Expiring Licenses (Next 7 Days)</h3>
+                </div>
+                <div class="table-wrapper">
+                    <table id="expiringTable" style="width: 100%;">
+                        <thead><tr><th>Company</th><th>Package</th><th>Expiry Date</th><th>Devices</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div id="companiesTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>🏢 All Companies</h3><div style="display: flex; gap: 12px;"><input type="text" id="companySearch" placeholder="Search company..." style="width: 200px;"><button class="btn btn-primary btn-sm" onclick="openGenerateLicenseModal()">+ New License</button><button class="btn btn-info btn-sm" onclick="exportCompaniesToExcel()">📊 Export Excel</button></div></div><div class="table-wrapper"><table id="companiesTable" style="width: 100%;"><thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Devices</th><th>Max</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead><tbody></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>🏢 All Companies</h3>
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="companySearch" placeholder="Search company..." style="width: 200px;">
+                        <button class="btn btn-primary btn-sm" onclick="openGenerateLicenseModal()">+ New License</button>
+                        <button class="btn btn-info btn-sm" onclick="exportCompaniesToExcel()">📊 Export Excel</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="companiesTable" style="width: 100%;">
+                        <thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Devices</th><th>Max</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div id="devicesTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>📱 All Devices</h3><div style="display: flex; gap: 12px;"><input type="text" id="deviceSearch" placeholder="Search device/company..." style="width: 220px;"><select id="deviceStatusFilter" style="width: 140px;"><option value="">All Status</option><option value="ACTIVE">Active</option><option value="PENDING_APPROVAL">Pending</option><option value="SUSPENDED">Suspended</option><option value="BANNED">Banned</option></select><button class="btn btn-info btn-sm" onclick="exportDevicesToExcel()">📊 Export</button></div></div><div class="table-wrapper"><table id="devicesTable" style="width: 100%;"><thead><tr><th>Device ID</th><th>Device Name</th><th>Company</th><th>License</th><th>Status</th><th>Last Seen</th><th>Violations</th><th>Actions</th></tr></thead><tbody></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>📱 All Devices</h3>
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="deviceSearch" placeholder="Search device/company..." style="width: 220px;">
+                        <select id="deviceStatusFilter" style="width: 140px;">
+                            <option value="">All Status</option>
+                            <option value="ACTIVE">Active</option>
+                            <option value="PENDING_APPROVAL">Pending</option>
+                            <option value="SUSPENDED">Suspended</option>
+                            <option value="BANNED">Banned</option>
+                        </select>
+                        <button class="btn btn-info btn-sm" onclick="exportDevicesToExcel()">📊 Export</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="devicesTable" style="width: 100%;">
+                        <thead><tr><th>Device ID</th><th>Device Name</th><th>Company</th><th>License</th><th>Status</th><th>Last Seen</th><th>Violations</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div id="violationsTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>⚠️ All Violations Log</h3><div style="display: flex; gap: 12px;"><input type="text" id="violationSearch" placeholder="Search..." style="width: 200px;"><select id="violationTypeFilter" style="width: 160px;"><option value="">All Types</option><option value="GPS_SPOOFING">GPS Spoofing</option><option value="MULTIPLE_DEVICE">Multiple Device</option><option value="LICENSE_TAMPER">License Tamper</option><option value="SUSPICIOUS_ACTIVITY">Suspicious</option></select><button class="btn btn-danger btn-sm" onclick="clearViolationsConfirm()">🗑️ Clear All</button></div></div><div class="table-wrapper"><table id="violationsTable" style="width: 100%;"><thead><tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Details</th><th>Time</th><th>Action</th></tr></thead><tbody></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>⚠️ All Violations Log</h3>
+                    <div style="display: flex; gap: 12px;">
+                        <input type="text" id="violationSearch" placeholder="Search..." style="width: 200px;">
+                        <select id="violationTypeFilter" style="width: 160px;">
+                            <option value="">All Types</option>
+                            <option value="GPS_SPOOFING">GPS Spoofing</option>
+                            <option value="MULTIPLE_DEVICE">Multiple Device</option>
+                            <option value="LICENSE_TAMPER">License Tamper</option>
+                            <option value="SUSPICIOUS_ACTIVITY">Suspicious</option>
+                        </select>
+                        <button class="btn btn-danger btn-sm" onclick="clearViolationsConfirm()">🗑️ Clear All</button>
+                    </div>
+                </div>
+                <div class="table-wrapper">
+                    <table id="violationsTable" style="width: 100%;">
+                        <thead><tr><th>Company</th><th>Device</th><th>Violation Type</th><th>Details</th><th>Time</th><th>Action</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div id="requestsTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>📝 Pending Device Approvals</h3><span id="pendingCount" class="badge badge-warning">0</span></div><div class="table-wrapper"><table id="requestsTable" style="width: 100%;"><thead><tr><th>Company</th><th>Device ID</th><th>Device Name</th><th>Requested At</th><th>Actions</th></tr></thead><tbody></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>📝 Pending Device Approvals</h3>
+                    <span id="pendingCount" class="badge badge-warning">0</span>
+                </div>
+                <div class="table-wrapper">
+                    <table id="requestsTable" style="width: 100%;">
+                        <thead><tr><th>Company</th><th>Device ID</th><th>Device Name</th><th>Requested At</th><th>Actions</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <div id="licenseTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>🔑 Generate New License</h3></div><div class="grid-2">
-                <div class="form-group"><label>Company Name *</label><input type="text" id="genCompanyName" placeholder="PT. Contoh Perusahaan"></div>
-                <div class="form-group"><label>PIC Name *</label><input type="text" id="genPic" placeholder="Nama Penanggung Jawab"></div>
-                <div class="form-group"><label>Phone *</label><input type="text" id="genPhone" placeholder="0812-3456-7890"></div>
-                <div class="form-group"><label>Email *</label><input type="email" id="genEmail" placeholder="email@perusahaan.com"></div>
-                <div class="form-group"><label>Package *</label><select id="genPackage"><option value="DEMO">DEMO - 2 devices, 7 days trial (Rp 0)</option><option value="BASIC">BASIC - 10 devices, Rp 500.000/bulan</option><option value="PRO">PRO - Unlimited devices, Rp 2.000.000/bulan</option></select></div>
-                <div class="form-group"><label>Custom Max Devices (optional)</label><input type="number" id="genMaxDevices" placeholder="Leave empty for package default"></div>
-                <div class="form-group"><label>Address</label><textarea id="genAddress" rows="2" placeholder="Alamat lengkap perusahaan"></textarea></div>
-                <div class="form-group"><label>Notes</label><textarea id="genNotes" rows="2" placeholder="Catatan internal"></textarea></div>
-            </div><button class="btn btn-primary" onclick="generateLicense()" style="width: 100%;">🚀 Generate License</button></div>
-            <div class="card"><div class="card-header"><h3>📋 Recently Generated</h3></div><div class="table-wrapper"><table style="width: 100%;"><thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Created</th></tr></thead><tbody id="recentLicensesBody"></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>🔑 Generate New License</h3>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group"><label>Company Name *</label><input type="text" id="genCompanyName" placeholder="PT. Contoh Perusahaan"></div>
+                    <div class="form-group"><label>PIC Name *</label><input type="text" id="genPic" placeholder="Nama Penanggung Jawab"></div>
+                    <div class="form-group"><label>Phone *</label><input type="text" id="genPhone" placeholder="0812-3456-7890"></div>
+                    <div class="form-group"><label>Email *</label><input type="email" id="genEmail" placeholder="email@perusahaan.com"></div>
+                    <div class="form-group"><label>Package *</label>
+                        <select id="genPackage">
+                            <option value="DEMO">DEMO - 2 devices, 7 days trial (Rp 0)</option>
+                            <option value="BASIC">BASIC - 10 devices, Rp 500.000/bulan</option>
+                            <option value="PRO">PRO - Unlimited devices, Rp 2.000.000/bulan</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>Custom Max Devices (optional)</label><input type="number" id="genMaxDevices" placeholder="Leave empty for package default"></div>
+                    <div class="form-group"><label>Address</label><textarea id="genAddress" rows="2" placeholder="Alamat lengkap perusahaan"></textarea></div>
+                    <div class="form-group"><label>Notes</label><textarea id="genNotes" rows="2" placeholder="Catatan internal"></textarea></div>
+                </div>
+                <button class="btn btn-primary" onclick="generateLicense()" style="width: 100%;">🚀 Generate License</button>
+            </div>
+            <div class="card">
+                <div class="card-header"><h3>📋 Recently Generated</h3></div>
+                <div class="table-wrapper"><table style="width: 100%;"><thead><tr><th>Company</th><th>License Key</th><th>Package</th><th>Created</th></tr></thead><tbody id="recentLicensesBody"></tbody></table></div>
+            </div>
         </div>
 
         <div id="devicerequestsTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>💸 Device Addition Requests</h3><div style="display: flex; gap: 12px;"><select id="requestStatusFilter" style="width: 140px;"><option value="">All</option><option value="PENDING">Pending</option><option value="WAITING_PAYMENT">Waiting Payment</option><option value="PAID">Paid</option><option value="REJECTED">Rejected</option></select><button class="btn btn-info btn-sm" onclick="loadDeviceRequests()">🔄 Refresh</button></div></div><div class="table-wrapper"><table id="deviceRequestsTable" style="width: 100%;"><thead><tr><th>Company</th><th>Device Name</th><th>Fee</th><th>Status</th><th>Requested</th><th>Actions</th></tr></thead><tbody></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>💸 Device Addition Requests</h3>
+                    <div style="display: flex; gap: 12px;">
+                        <select id="requestStatusFilter" style="width: 140px;">
+                            <option value="">All</option>
+                            <option value="PENDING">Pending</option>
+                            <option value="WAITING_PAYMENT">Waiting Payment</option>
+                            <option value="PAID">Paid</option>
+                            <option value="REJECTED">Rejected</option>
+                        </select>
+                        <button class="btn btn-info btn-sm" onclick="loadDeviceRequests()">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="table-wrapper"><table id="deviceRequestsTable" style="width: 100%;"><thead><tr><th>Company</th><th>Device Name</th><th>Fee</th><th>Status</th><th>Requested</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+            </div>
         </div>
 
         <div id="invoicesTab" class="tab-pane">
-            <div class="card"><div class="card-header"><h3>💰 Invoices & Payments</h3><div style="display: flex; gap: 12px;"><select id="invoiceStatusFilter" style="width: 130px;"><option value="">All</option><option value="PAID">Paid</option><option value="UNPAID">Unpaid</option></select><button class="btn btn-info btn-sm" onclick="exportInvoicesToExcel()">📊 Export</button></div></div><div class="table-wrapper"><table id="invoicesTable" style="width: 100%;"><thead><tr><th>Invoice #</th><th>Company</th><th>Amount</th><th>Months</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody></tbody></table></div></div>
+            <div class="card">
+                <div class="card-header">
+                    <h3>💰 Invoices & Payments</h3>
+                    <div style="display: flex; gap: 12px;">
+                        <select id="invoiceStatusFilter" style="width: 130px;"><option value="">All</option><option value="PAID">Paid</option><option value="UNPAID">Unpaid</option></select>
+                        <button class="btn btn-info btn-sm" onclick="exportInvoicesToExcel()">📊 Export</button>
+                    </div>
+                </div>
+                <div class="table-wrapper"><table id="invoicesTable" style="width: 100%;"><thead><tr><th>Invoice #</th><th>Company</th><th>Amount</th><th>Months</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody></tbody></table></div>
+            </div>
         </div>
 
         <div id="settingsTab" class="tab-pane">
             <div class="grid-2">
-                <div class="card"><div class="card-header"><h3>👥 Admin Users</h3></div><div class="form-group"><label>New Username</label><input type="text" id="newAdminUser" placeholder="username"></div><div class="form-group"><label>New Password</label><input type="password" id="newAdminPass" placeholder="password"></div><div class="form-group"><label>Role</label><select id="newAdminRole"><option value="ADMIN">ADMIN</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div><button class="btn btn-primary" onclick="addAdminUser()">➕ Add Admin User</button><div style="margin-top: 24px;"><h4 style="margin-bottom: 12px;">Existing Admins</h4><div id="adminUsersList"></div></div></div>
-                <div class="card"><div class="card-header"><h3>💰 Pricing Configuration</h3></div><div class="form-group"><label>BASIC Package Price (Rp/month)</label><input type="number" id="priceBasic" value="500000"></div><div class="form-group"><label>PRO Package Price (Rp/month)</label><input type="number" id="pricePro" value="2000000"></div><div class="form-group"><label>Extra Device Fee (Rp/device/month) - for BASIC</label><input type="number" id="extraDeviceFee" value="50000"></div><div class="form-group"><label>Tax (%)</label><input type="number" id="taxRate" value="11"></div><button class="btn btn-primary" onclick="savePricing()">💾 Save Pricing</button></div>
-                <div class="card"><div class="card-header"><h3>🔄 System Actions</h3></div><div style="display: flex; flex-direction: column; gap: 12px;"><button class="btn btn-info" onclick="backupData()">📦 Backup All Data</button><button class="btn btn-warning" onclick="checkExpiredNow()">⏰ Check Expired Licenses</button><button class="btn btn-danger" onclick="resetSystem()">⚠️ Reset System (Clear All Data)</button></div></div>
-                <div class="card"><div class="card-header"><h3>ℹ️ System Info</h3></div><div id="systemInfo"><p>Version: v3.0 Enterprise</p><p>Status: <span class="badge badge-active">Online</span></p><p id="serverTime">-</p></div></div>
+                <div class="card">
+                    <div class="card-header"><h3>👥 Admin Users</h3></div>
+                    <div class="form-group"><label>New Username</label><input type="text" id="newAdminUser" placeholder="username"></div>
+                    <div class="form-group"><label>New Password</label><input type="password" id="newAdminPass" placeholder="password"></div>
+                    <div class="form-group"><label>Role</label><select id="newAdminRole"><option value="ADMIN">ADMIN</option><option value="SUPER_ADMIN">SUPER_ADMIN</option></select></div>
+                    <button class="btn btn-primary" onclick="addAdminUser()">➕ Add Admin User</button>
+                    <div style="margin-top: 24px;"><h4 style="margin-bottom: 12px;">Existing Admins</h4><div id="adminUsersList"></div></div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>💰 Pricing Configuration</h3></div>
+                    <div class="form-group"><label>BASIC Package Price (Rp/month)</label><input type="number" id="priceBasic" value="500000"></div>
+                    <div class="form-group"><label>PRO Package Price (Rp/month)</label><input type="number" id="pricePro" value="2000000"></div>
+                    <div class="form-group"><label>Extra Device Fee (Rp/device/month) - for BASIC</label><input type="number" id="extraDeviceFee" value="50000"></div>
+                    <div class="form-group"><label>Tax (%)</label><input type="number" id="taxRate" value="11"></div>
+                    <button class="btn btn-primary" onclick="savePricing()">💾 Save Pricing</button>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>🔄 System Actions</h3></div>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button class="btn btn-info" onclick="backupData()">📦 Backup All Data</button>
+                        <button class="btn btn-warning" onclick="checkExpiredNow()">⏰ Check Expired Licenses</button>
+                        <button class="btn btn-danger" onclick="resetSystem()">⚠️ Reset System (Clear All Data)</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3>ℹ️ System Info</h3></div>
+                    <div id="systemInfo"><p>Version: v3.0 Enterprise</p><p>Status: <span class="badge badge-active">Online</span></p><p id="serverTime">-</p></div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <div id="loginOverlay" class="login-overlay">
-    <div class="login-card"><h2>🔐 VMS Command Center</h2><div class="form-group"><label>Username</label><input type="text" id="loginUser" placeholder="admin"></div><div class="form-group"><label>Password</label><input type="password" id="loginPass" placeholder="********"></div><button class="btn btn-primary" onclick="doLogin()" style="width: 100%;">Login</button></div>
+    <div class="login-card">
+        <h2>🔐 VMS Command Center</h2>
+        <div class="form-group"><label>Username</label><input type="text" id="loginUser" placeholder="admin"></div>
+        <div class="form-group"><label>Password</label><input type="password" id="loginPass" placeholder="********"></div>
+        <button class="btn btn-primary" onclick="doLogin()" style="width: 100%;">Login</button>
+    </div>
 </div>
 
+<!-- MODALS -->
 <div id="renewModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>🔄 Renew License</h3><button class="close-modal" onclick="closeModal('renewModal')">&times;</button></div><div class="form-group"><label>Company</label><input type="text" id="renewCompanyName" readonly></div><div class="form-group"><label>Months</label><select id="renewMonths"><option value="1">1 Month</option><option value="3">3 Months (5% discount)</option><option value="6">6 Months (10% discount)</option><option value="12">12 Months (15% discount)</option></select></div><div class="form-group"><label>Payment Method</label><select id="renewPaymentMethod"><option value="MANUAL">Manual (Bank Transfer)</option><option value="CASH">Cash</option></select></div><div style="display: flex; gap: 12px; margin-top: 20px;"><button class="btn btn-primary" onclick="confirmRenew()">Renew License</button><button class="btn btn-outline" onclick="closeModal('renewModal')">Cancel</button></div></div></div>
+
 <div id="upgradeModal" class="modal"><div class="modal-content"><div class="modal-header"><h3>📈 Upgrade Package</h3><button class="close-modal" onclick="closeModal('upgradeModal')">&times;</button></div><div class="form-group"><label>Company</label><input type="text" id="upgradeCompanyName" readonly></div><div class="form-group"><label>Current Package</label><input type="text" id="upgradeCurrentPackage" readonly></div><div class="form-group"><label>New Package</label><select id="upgradePackage"><option value="BASIC">BASIC - 10 devices</option><option value="PRO">PRO - Unlimited devices</option></select></div><div class="form-group"><label>Custom Max Devices (for PRO)</label><input type="number" id="upgradeMaxDevices" placeholder="Leave empty for unlimited"></div><div class="form-group"><label>Notes</label><textarea id="upgradeNotes" rows="2" placeholder="Upgrade notes"></textarea></div><div style="display: flex; gap: 12px; margin-top: 20px;"><button class="btn btn-primary" onclick="confirmUpgrade()">Upgrade Package</button><button class="btn btn-outline" onclick="closeModal('upgradeModal')">Cancel</button></div></div></div>
+
 <div id="deviceDetailModal" class="modal"><div class="modal-content" style="max-width: 600px;"><div class="modal-header"><h3>📱 Device Details</h3><button class="close-modal" onclick="closeModal('deviceDetailModal')">&times;</button></div><div id="deviceDetailContent"></div></div></div>
+
 <div id="companyDetailModal" class="modal"><div class="modal-content" style="max-width: 650px;"><div class="modal-header"><h3>🏢 Company Details</h3><button class="close-modal" onclick="closeModal('companyDetailModal')">&times;</button></div><div id="companyDetailContent"></div></div></div>
+
 <div id="changePasswordModal" class="modal-overlay" style="display: none;"><div class="modal-box"><h3>🔐 Ganti Password</h3><input type="password" id="oldPassword" placeholder="Password Lama" class="input"/><input type="password" id="newPassword" placeholder="Password Baru" class="input"/><input type="password" id="confirmPassword" placeholder="Konfirmasi Password Baru" class="input"/><div class="modal-actions"><button class="btn btn-secondary" onclick="closeChangePasswordModal()">Batal</button><button class="btn btn-warning" onclick="submitChangePassword()">Simpan</button></div></div></div>
+
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
 // ================= EXECUTION CONTROL CORE =================
 let ACTION_QUEUE = Promise.resolve();
 let ACTION_LOCK = false;
-function enqueueAction(fn) { ACTION_QUEUE = ACTION_QUEUE.then(() => fn()).catch(err => console.error('ACTION ERROR:', err)); return ACTION_QUEUE; }
-async function guardedAction(fn) { if (ACTION_LOCK) return; ACTION_LOCK = true; try { await fn(); } finally { setTimeout(() => { ACTION_LOCK = false; }, 300); } }
-async function SAFE_ACTION(apiPath, body, reloadFn) { return guardedAction(() => enqueueAction(async () => { await API.call(apiPath, 'POST', body); if (reloadFn) await reloadFn(); })); }
+function enqueueAction(fn) {
+    ACTION_QUEUE = ACTION_QUEUE.then(() => fn()).catch(err => console.error('ACTION ERROR:', err));
+    return ACTION_QUEUE;
+}
+async function guardedAction(fn) {
+    if (ACTION_LOCK) return;
+    ACTION_LOCK = true;
+    try { await fn(); } finally { setTimeout(() => { ACTION_LOCK = false; }, 300); }
+}
+async function SAFE_ACTION(apiPath, body, reloadFn) {
+    return guardedAction(() => enqueueAction(async () => { await API.call(apiPath, 'POST', body); if (reloadFn) await reloadFn(); }));
+}
 
 // ================= VMS GLOBAL CORE =================
 let currentUser = null;
@@ -255,6 +896,7 @@ function showToast(message, type = "info") {
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
+
 function formatCurrency(amount) { return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(amount); }
 function formatDate(timestamp) { if (!timestamp) return '-'; return new Date(timestamp).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' }); }
 function formatDateTime(timestamp) { if (!timestamp) return '-'; return new Date(timestamp).toLocaleString('id-ID'); }
@@ -274,7 +916,10 @@ async function submitChangePassword() {
     showToast("Mengubah password...", "warning");
     try {
         const res = await API.call("/admin/change-password", "POST", { oldPassword, newPassword });
-        if (res) { showToast("Password berhasil diubah. Login ulang...", "success"); setTimeout(() => { localStorage.clear(); location.reload(); }, 1500); }
+        if (res) {
+            showToast("Password berhasil diubah. Login ulang...", "success");
+            setTimeout(() => { localStorage.clear(); location.reload(); }, 1500);
+        }
     } catch (e) { showToast(e.message, "error"); }
 }
 
@@ -284,14 +929,11 @@ async function doLogin() {
     if (!username || !password) { showToast("Username and password required", "error"); return; }
     showToast("Logging in...", "info");
     try {
-        // Login harus pakai fetch langsung karena API.call menghilangkan ok dan token
         const res = await fetch("https://vms3modev4.sapammeded.workers.dev/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+            method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password })
         });
         const rawData = await res.json();
-        
         if (rawData && rawData.ok === true) {
             localStorage.setItem("token", rawData.token);
             localStorage.setItem("username", rawData.username);
@@ -304,58 +946,45 @@ async function doLogin() {
             showToast(`Welcome ${rawData.username}`, "success");
             startRefresh();
             await reloadAdminAllSafe();
-        } else {
-            showToast(rawData?.error || "Login failed", "error");
-        }
-    } catch (err) {
-        console.error("[LOGIN ERROR]", err);
-        showToast(err.message, "error");
-    }
+        } else { showToast(rawData?.error || "Login failed", "error"); }
+    } catch (err) { console.error("[LOGIN ERROR]", err); showToast(err.message, "error"); }
 }
-function logout() { if (refreshInterval) clearInterval(refreshInterval); localStorage.clear(); document.getElementById("loginOverlay").classList.remove("hidden"); showToast("Logged out", "info"); }
+
+function logout() {
+    if (refreshInterval) clearInterval(refreshInterval);
+    localStorage.clear();
+    document.getElementById("loginOverlay").classList.remove("hidden");
+    showToast("Logged out", "info");
+}
 
 // ================= LOAD FUNCTIONS =================
 async function reloadAdminAllSafe() {
     if (ADMIN_LOCK) return;
     ADMIN_LOCK = true;
-    await Promise.all([ loadCompanies(), loadDevices(), loadActivity(), loadInvoices(), loadStats(), loadDeviceRequests(), loadAdminUsers() ]);
+    await Promise.all([
+        loadCompanies(), loadDevices(), loadActivity(), loadInvoices(), loadStats(), loadDeviceRequests(), loadAdminUsers()
+    ]);
     setTimeout(() => ADMIN_LOCK = false, 300);
 }
 
 async function loadCompanies() {
-    try {
-        const data = await API.call("/admin/companies", "GET");
-        companiesData = Array.isArray(data) ? data : [];
-        renderCompaniesTable();
-        renderExpiringTable();
-        renderRecentLicensesTable();
-    } catch (e) { console.error("loadCompanies error:", e); companiesData = []; renderCompaniesTable(); renderExpiringTable(); }
+    try { const data = await API.call("/admin/companies", "GET"); companiesData = Array.isArray(data) ? data : []; renderCompaniesTable(); renderExpiringTable(); renderRecentLicensesTable(); } 
+    catch (e) { console.error("loadCompanies error:", e); companiesData = []; renderCompaniesTable(); renderExpiringTable(); }
 }
 
 async function loadDevices() {
-    try {
-        const data = await API.call("/admin/devices", "GET");
-        devicesData = Array.isArray(data) ? data : [];
-        renderDevicesTable();
-        renderPendingRequests();
-    } catch (e) { console.error("loadDevices error:", e); devicesData = []; renderDevicesTable(); renderPendingRequests(); }
+    try { const data = await API.call("/admin/devices", "GET"); devicesData = Array.isArray(data) ? data : []; renderDevicesTable(); renderPendingRequests(); } 
+    catch (e) { console.error("loadDevices error:", e); devicesData = []; renderDevicesTable(); renderPendingRequests(); }
 }
 
 async function loadActivity() {
-    try {
-        const data = await API.call("/admin/activity?limit=500", "GET");
-        activityData = Array.isArray(data) ? data : [];
-        renderViolationsTable();
-        renderRecentViolations();
-    } catch (e) { console.error("loadActivity error:", e); activityData = []; renderViolationsTable(); renderRecentViolations(); }
+    try { const data = await API.call("/admin/activity?limit=500", "GET"); activityData = Array.isArray(data) ? data : []; renderViolationsTable(); renderRecentViolations(); } 
+    catch (e) { console.error("loadActivity error:", e); activityData = []; renderViolationsTable(); renderRecentViolations(); }
 }
 
 async function loadInvoices() {
-    try {
-        const data = await API.call("/admin/invoices", "GET");
-        invoicesData = Array.isArray(data) ? data : [];
-        renderInvoicesTable();
-    } catch (e) { console.error("loadInvoices error:", e); invoicesData = []; renderInvoicesTable(); }
+    try { const data = await API.call("/admin/invoices", "GET"); invoicesData = Array.isArray(data) ? data : []; renderInvoicesTable(); } 
+    catch (e) { console.error("loadInvoices error:", e); invoicesData = []; renderInvoicesTable(); }
 }
 
 async function loadStats() {
@@ -382,11 +1011,13 @@ async function loadStats() {
 
 async function loadDeviceRequests() {
     const statusFilter = document.getElementById("requestStatusFilter")?.value || "";
-    try { const data = await API.call("/admin/device-requests" + (statusFilter ? `?status=${statusFilter}` : ""), "GET"); if (data && Array.isArray(data)) renderDeviceRequestsTable(data); } catch (e) { console.error("loadDeviceRequests error:", e); }
+    try { const data = await API.call("/admin/device-requests" + (statusFilter ? `?status=${statusFilter}` : ""), "GET"); if (data && Array.isArray(data)) renderDeviceRequestsTable(data); } 
+    catch (e) { console.error("loadDeviceRequests error:", e); }
 }
 
 async function loadAdminUsers() {
-    try { const data = await API.call("/admin/users", "GET"); if (data && Array.isArray(data)) { document.getElementById("adminUsersList").innerHTML = data.map(u => `<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);"><div><strong>${escapeHtml(u.username)}</strong><br><small class="text-muted">${escapeHtml(u.role)}</small></div>${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${escapeHtml(u.username)}')">Delete</button>` : '<span class="text-muted">Default</span>'}</div>`).join(''); } } catch (e) { console.error("loadAdminUsers error:", e); }
+    try { const data = await API.call("/admin/users", "GET"); if (data && Array.isArray(data)) { document.getElementById("adminUsersList").innerHTML = data.map(u => `<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border);"><div><strong>${escapeHtml(u.username)}</strong><br><small class="text-muted">${escapeHtml(u.role)}</small></div>${u.username !== 'admin' ? `<button class="btn btn-danger btn-sm" onclick="deleteAdminUser('${escapeHtml(u.username)}')">Delete</button>` : '<span class="text-muted">Default</span>'}</div>`).join(''); } } 
+    catch (e) { console.error("loadAdminUsers error:", e); }
 }
 
 // ================= RENDER FUNCTIONS =================
@@ -509,14 +1140,7 @@ function renderDeviceRequestsTable(requests) {
 
 // ================= ACTIONS =================
 async function generateLicense() {
-    const companyName = document.getElementById("genCompanyName").value;
-    const pic = document.getElementById("genPic").value;
-    const phone = document.getElementById("genPhone").value;
-    const email = document.getElementById("genEmail").value;
-    const pkg = document.getElementById("genPackage").value;
-    const maxDevices = document.getElementById("genMaxDevices").value;
-    const address = document.getElementById("genAddress").value;
-    const notes = document.getElementById("genNotes").value;
+    const companyName = document.getElementById("genCompanyName").value, pic = document.getElementById("genPic").value, phone = document.getElementById("genPhone").value, email = document.getElementById("genEmail").value, pkg = document.getElementById("genPackage").value, maxDevices = document.getElementById("genMaxDevices").value, address = document.getElementById("genAddress").value, notes = document.getElementById("genNotes").value;
     if (!companyName || !pic || !phone || !email) { showToast("Please fill all required fields", "error"); return; }
     showToast("Generating license...", "info");
     try {
@@ -533,9 +1157,7 @@ async function markInvoicePaid(invoiceId) { if (!confirm("Mark this invoice as p
 async function approveDeviceRequestFee(requestId) { if (!confirm("Approve this device request?")) return; await SAFE_ACTION("/approve-device-request", { requestId, approve: true }, reloadAdminAllSafe); showToast("Request approved. Invoice generated.", "success"); }
 async function rejectDeviceRequest(requestId) { const reason = prompt("Reason for rejection:"); if (reason === null) return; await SAFE_ACTION("/approve-device-request", { requestId, approve: false, notes: reason }, reloadAdminAllSafe); showToast("Request rejected", "success"); }
 async function addAdminUser() {
-    const username = document.getElementById("newAdminUser").value;
-    const password = document.getElementById("newAdminPass").value;
-    const role = document.getElementById("newAdminRole").value;
+    const username = document.getElementById("newAdminUser").value, password = document.getElementById("newAdminPass").value, role = document.getElementById("newAdminRole").value;
     if (!username || !password) { showToast("Username and password required", "error"); return; }
     try { await SAFE_ACTION("/admin/add-user", { username, password, role }, reloadAdminAllSafe); showToast("Admin user added", "success"); document.getElementById("newAdminUser").value = ""; document.getElementById("newAdminPass").value = ""; } catch (e) { showToast(e.message, "error"); }
 }
@@ -577,9 +1199,9 @@ async function confirmUpgrade() {
 }
 
 async function viewCompanyDetails(companyId) {
-    try { const data = await API.call(`/admin/company/${companyId}`, "GET"); if (data) { document.getElementById("companyDetailContent").innerHTML = `<div class="grid-2" style="gap: 16px;"><div><strong>Company Name:</strong><br>${escapeHtml(data.companyName)}</div><div><strong>License Key:</strong><br><code>${escapeHtml(data.licenseKey)}</code></div><div><strong>PIC:</strong><br>${escapeHtml(data.pic)}</div><div><strong>Phone:</strong><br>${escapeHtml(data.phone)}</div><div><strong>Email:</strong><br>${escapeHtml(data.email)}</div><div><strong>Package:</strong><br><span class="badge ${data.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(data.package)}</span></div><div><strong>Devices:</strong><br>${data.stats?.totalDevices || 0} / ${data.maxDevices}</div><div><strong>Expiry:</strong><br class="${data.expiredAt < Date.now() ? 'text-danger' : ''}">${formatDate(data.expiredAt)}</div><div><strong>Status:</strong><br><span class="badge ${data.expiredAt < Date.now() ? 'badge-expired' : 'badge-active'}">${data.expiredAt < Date.now() ? 'EXPIRED' : 'ACTIVE'}</span></div><div><strong>Created:</strong><br>${formatDate(data.createdAt)}</div></div><hr style="border-color: var(--border); margin: 16px 0;"><h4 style="margin-bottom: 12px;">📱 Devices (${data.devices?.length || 0})</h4><div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>${(data.devices || []).map(d => `<tr>:<code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td><td>${escapeHtml(d.deviceName || '-')}</td><td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td><td>${formatDateTime(d.lastSeen)}</span></tr>`).join('') || '<tr><td colspan="4" class="text-muted">No devices</span></tr>'}</tbody>}</table></div>`; document.getElementById("companyDetailModal").classList.add("active"); } } catch (e) { showToast(e.message, "error"); } }
+    try { const data = await API.call(`/admin/company/${companyId}`, "GET"); if (data) { document.getElementById("companyDetailContent").innerHTML = `<div class="grid-2" style="gap: 16px;"><div><strong>Company Name:</strong><br>${escapeHtml(data.companyName)}</div><div><strong>License Key:</strong><br><code>${escapeHtml(data.licenseKey)}</code></div><div><strong>PIC:</strong><br>${escapeHtml(data.pic)}</div><div><strong>Phone:</strong><br>${escapeHtml(data.phone)}</div><div><strong>Email:</strong><br>${escapeHtml(data.email)}</div><div><strong>Package:</strong><br><span class="badge ${data.package === 'PRO' ? 'badge-pro' : 'badge-basic'}">${escapeHtml(data.package)}</span></div><div><strong>Devices:</strong><br>${data.stats?.totalDevices || 0} / ${data.maxDevices}</div><div><strong>Expiry:</strong><br class="${data.expiredAt < Date.now() ? 'text-danger' : ''}">${formatDate(data.expiredAt)}</div><div><strong>Status:</strong><br><span class="badge ${data.expiredAt < Date.now() ? 'badge-expired' : 'badge-active'}">${data.expiredAt < Date.now() ? 'EXPIRED' : 'ACTIVE'}</span></div><div><strong>Created:</strong><br>${formatDate(data.createdAt)}</div></div><hr style="border-color: var(--border); margin: 16px 0;"><h4 style="margin-bottom: 12px;">📱 Devices (${data.devices?.length || 0})</h4><div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Device ID</th><th>Name</th><th>Status</th><th>Last Seen</th></tr></thead><tbody>${(data.devices || []).map(d => `<tr><td><code>${escapeHtml(d.deviceId ? d.deviceId.substring(0, 12) : '-')}...</code></td><td>${escapeHtml(d.deviceName || '-')}</td><td><span class="badge ${d.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(d.status)}</span></td><td>${formatDateTime(d.lastSeen)}</td></tr>`).join('') || '<tr><td colspan="4" class="text-muted">No devices</td></tr>'}</tbody></table></div>`; document.getElementById("companyDetailModal").classList.add("active"); } } catch (e) { showToast(e.message, "error"); } }
 
-function viewDeviceDetails(deviceId) { const device = devicesData.find(d => d.deviceId === deviceId); if (!device) return; document.getElementById("deviceDetailContent").innerHTML = `<div class="grid-2" style="gap: 16px;"><div><strong>Device ID:</strong><br><code>${escapeHtml(device.deviceId)}</code></div><div><strong>Device Name:</strong><br>${escapeHtml(device.deviceName || '-')}</div><div><strong>Company:</strong><br>${escapeHtml(device.companyName)}</div><div><strong>License Key:</strong><br><code>${escapeHtml(device.licenseKey)}</code></div><div><strong>Status:</strong><br><span class="badge ${device.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(device.status)}</span></div><div><strong>First Seen:</strong><br>${formatDateTime(device.firstSeen)}</div><div><strong>Last Seen:</strong><br>${formatDateTime(device.lastSeen)}</div><div><strong>Violations:</strong><br>${device.violations?.length || 0}</div></div><hr style="border-color: var(--border); margin: 16px 0;"><h4 style="margin-bottom: 12px;">⚠️ Violation History</h4><div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<td><span class="badge badge-danger">${escapeHtml(v.violationType)}</span></span></td><td>${escapeHtml(v.details || '-')}</span></td><td>${formatDateTime(v.timestamp)}</span></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</span></tr>'}</tbody>}</table></div>`; document.getElementById("deviceDetailModal").classList.add("active"); }
+function viewDeviceDetails(deviceId) { const device = devicesData.find(d => d.deviceId === deviceId); if (!device) return; document.getElementById("deviceDetailContent").innerHTML = `<div class="grid-2" style="gap: 16px;"><div><strong>Device ID:</strong><br><code>${escapeHtml(device.deviceId)}</code></div><div><strong>Device Name:</strong><br>${escapeHtml(device.deviceName || '-')}</div><div><strong>Company:</strong><br>${escapeHtml(device.companyName)}</div><div><strong>License Key:</strong><br><code>${escapeHtml(device.licenseKey)}</code></div><div><strong>Status:</strong><br><span class="badge ${device.status === 'ACTIVE' ? 'badge-active' : 'badge-pending'}">${escapeHtml(device.status)}</span></div><div><strong>First Seen:</strong><br>${formatDateTime(device.firstSeen)}</div><div><strong>Last Seen:</strong><br>${formatDateTime(device.lastSeen)}</div><div><strong>Violations:</strong><br>${device.violations?.length || 0}</div></div><hr style="border-color: var(--border); margin: 16px 0;"><h4 style="margin-bottom: 12px;">⚠️ Violation History</h4><div class="table-wrapper"><table style="font-size: 0.75rem;"><thead><tr><th>Type</th><th>Details</th><th>Time</th></tr></thead><tbody>${(device.violations || []).slice(0, 10).map(v => `<tr><td><span class="badge badge-danger">${escapeHtml(v.violationType)}</span></td><td>${escapeHtml(v.details || '-')}</td><td>${formatDateTime(v.timestamp)}</td></tr>`).join('') || '<tr><td colspan="3" class="text-muted">No violations</td></tr>'}</tbody></table></div>`; document.getElementById("deviceDetailModal").classList.add("active"); }
 
 function viewViolationDetails(id) { showToast("Violation details: " + id, "info"); }
 
