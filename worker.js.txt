@@ -479,7 +479,8 @@ export default {
                     status: 401 
                 });
             }
-            
+
+		            
             // ==================== CHANGE PASSWORD ====================
             if (path === '/admin/change-password' && request.method === 'POST') {
                 if (!auth) {
@@ -1372,53 +1373,64 @@ export default {
             
             // ==================== /generate-license ====================
             if (path === '/generate-license' && request.method === 'POST') {
-                const body = await request.json().catch(() => ({}));
-                const { companyName, pic, phone, email, address, package: pkg, customMaxDevices, notes } = body;
-                
-                if (!companyName || !pic || !phone || !email) {
-                    return new Response(JSON.stringify({ ok: false, error: 'Missing required fields' }), { headers: corsHeaders });
-                }
-                
-                const licenseKey = 'VMS-' + generateId().toUpperCase().substring(0, 16);
-                
-                let maxDevices = customMaxDevices ? parseInt(customMaxDevices) : (pkg === 'PRO' ? 999 : (pkg === 'BASIC' ? 10 : 2));
-                let expiredAt = Date.now();
-                
-                if (pkg === 'DEMO') {
-                    expiredAt += 7 * 86400000;
-                } else {
-                    expiredAt += 30 * 86400000;
-                }
-                
-                const newCompany = {
-                    id: generateId(),
-                    companyName: companyName,
-                    licenseKey: licenseKey,
-                    pic: pic,
-                    phone: phone,
-                    email: email,
-                    address: address || '',
-                    package: pkg,
-                    maxDevices: maxDevices,
-                    currentDevices: 0,
-                    expiredAt: expiredAt,
-                    status: 'ACTIVE',
-                    createdAt: Date.now(),
-                    notes: notes || ''
-                };
-                
-                const result = await atomicArrayUpdate(env, 'companies', (companies) => {
-                    return [...(companies || []), newCompany];
-                });
-                
-                await invalidateCompaniesCache();
-                
-                return new Response(JSON.stringify({
-                    ok: true,
-                    licenseKey: licenseKey,
-                    company: newCompany
-                }), { headers: corsHeaders });
-            }
+    const body = await request.json().catch(() => ({}));
+
+    const { 
+        companyName, 
+        pic, 
+        phone, 
+        email, 
+        address, 
+        package: pkg = "PRO", 
+        customMaxDevices, 
+        notes 
+    } = body;
+
+    if (!companyName || !pic || !phone || !email) {
+        return new Response(JSON.stringify({ ok: false, error: 'Missing required fields' }), { headers: corsHeaders });
+    }
+
+    const licenseKey = 'VMS-' + generateId().toUpperCase().substring(0, 16);
+
+    let maxDevices = customMaxDevices 
+        ? parseInt(customMaxDevices) 
+        : (pkg === 'PRO' ? 999 : (pkg === 'BASIC' ? 10 : 2));
+
+    let expiredAt = Date.now();
+    expiredAt += (pkg === 'DEMO' ? 7 : 30) * 86400000;
+
+    const newCompany = {
+        id: generateId(),
+        companyName,
+        licenseKey,
+        pic,
+        phone,
+        email,
+        address: address || "",
+        package: pkg,
+        maxDevices,
+        currentDevices: 0,
+        expiredAt,
+        status: "ACTIVE",
+        createdAt: Date.now(),
+        notes: notes || ""
+    };
+
+    const result = await atomicArrayUpdate(env, 'companies', (companies) => {
+        return [...(companies || []), newCompany];
+    });
+
+    if (!result.success) {
+        return new Response(JSON.stringify({ ok: false, error: 'FAILED_SAVE' }), { headers: corsHeaders });
+    }
+
+    await invalidateCompaniesCache();
+
+    return new Response(JSON.stringify({
+        ok: true,
+        data: newCompany
+    }), { headers: corsHeaders });
+}
             
             // ==================== /renew-license ====================
             if (path === '/renew-license' && request.method === 'POST') {
