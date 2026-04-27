@@ -1237,19 +1237,26 @@ async function init() {
     const savedUser = localStorage.getItem("username");
     const savedRole = localStorage.getItem("role");
 
-    // 🔴 WAJIB: kalau gak ada token, STOP TOTAL
     if (!token) {
         console.warn("TOKEN TIDAK ADA → STOP LOAD");
         return;
     }
 
-    // 🟢 UI tetap jalan kalau user ada
     if (savedUser) {
-        document.getElementById("loginOverlay")?.classList.add("hidden");
-        document.getElementById("topUsername")?.innerText = savedUser;
-        document.getElementById("sidebarUsername")?.innerText = savedUser;
-        document.getElementById("topRole")?.innerText = savedRole || "ADMIN";
-        document.getElementById("sidebarRole")?.innerText = savedRole || "ADMIN";
+        const loginOverlay = document.getElementById("loginOverlay");
+        if (loginOverlay) loginOverlay.classList.add("hidden");
+
+        const topUsername = document.getElementById("topUsername");
+        if (topUsername) topUsername.innerText = savedUser;
+
+        const sidebarUsername = document.getElementById("sidebarUsername");
+        if (sidebarUsername) sidebarUsername.innerText = savedUser;
+
+        const topRole = document.getElementById("topRole");
+        if (topRole) topRole.innerText = savedRole || "ADMIN";
+
+        const sidebarRole = document.getElementById("sidebarRole");
+        if (sidebarRole) sidebarRole.innerText = savedRole || "ADMIN";
     }
 
     try {
