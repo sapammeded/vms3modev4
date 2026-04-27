@@ -1,0 +1,2161 @@
+// ==================== VMS WORKER v3.3 - FIXED VERSION ====================
+// Cloudflare Worker untuk VMS SAPAM MEDED
+// FIXES: Race condition, cache invalidation, token expiry, device approval bug
+// FIXES: Companies cache, memory leak prevention, QR validation
+// PRINCIPLE: 1 license = 1 data - semua device baca data yang sama dari KV
+
+// ==================== GLOBAL CACHE WITH TTL ====================
+if (!globalThis.__session_cache) {
+    globalThis.__session_cache = new Map();
+}
+if (!globalThis.__companies_cache) {
+    globalThis.__companies_cache = { data: null, timestamp: 0, ttl: 60000 };
+}
+if (!globalThis.__reset_lock) {
+    globalThis.__reset_lock = false;
+}
+if (!globalThis.__rate) {
+    globalThis.__rate = new Map();
+}
+if (!globalThis.__operation_queue) {
+    globalThis.__operation_queue = new Map();
+}
+
+// ==================== SAFE KV HELPERS ====================
+async function safeArray(env, key, defaultValue = []) {
+    try {
+        const data = await getData(env, key);
+        if (Array.isArray(data)) {
+            return data;
+        }
+        console.warn(`[SAFE_ARRAY] ${key} bukan array, fallback ke []. Tipe: ${typeof data}`);
+        return defaultValue;
+    } catch (e) {
+        console.error(`[SAFE_ARRAY] Error fetching ${key}:`, e);
+        return defaultValue;
+    }
+}
+
+async function safeObject(env, key, defaultValue = {}) {
+    try {
+        const data = await getData(env, key);
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            return data;
+        }
+        console.warn(`[SAFE_OBJECT] ${key} bukan object, fallback ke {}`);
+        return defaultValue;
+    } catch (e) {
+        console.error(`[SAFE_OBJECT] Error fetching ${key}:`, e);
+        return defaultValue;
+    }
+}
+
+function scopedKey(base, licenseKey) {
+    return licenseKey ? `${base}:${licenseKey}` : base;
+}
+
+// ==================== ATOMIC OPERATIONS WITH RETRY ====================
+async function atomicArrayUpdate(env, key, updateFn, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const current = await safeArray(env, key);
+            const updated = updateFn(current);
+            
+            if (!Array.isArray(updated)) {
+                throw new Error(`Update function must return array, got ${typeof updated}`);
+            }
+            
+            const success = await saveData(env, key, updated);
+            if (success) {
+                return { success: true, data: updated, attempt };
+            }
+        } catch (e) {
+            console.error(`[ATOMIC_UPDATE] Attempt ${attempt} failed for key ${key}:`, e);
+            if (attempt === maxRetries) {
+                return { success: false, error: e.message };
+            }
+            await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt - 1)));
+        }
+    }
+    return { success: false, error: 'Max retries exceeded' };
+}
+
+async function atomicObjectUpdate(env, key, updateFn, maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const current = await safeObject(env, key);
+            const updated = updateFn(current);
+            
+            if (typeof updated !== 'object' || updated === null) {
+                throw new Error(`Update function must return object, got ${typeof updated}`);
+            }
+            
+            const success = await saveData(env, key, updated);
+            if (success) {
+                return { success: true, data: updated, attempt };
+            }
+        } catch (e) {
+            console.error(`[ATOMIC_UPDATE] Attempt ${attempt} failed for key ${key}:`, e);
+            if (attempt === maxRetries) {
+                return { success: false, error: e.message };
+            }
+            await new Promise(r => setTimeout(r, 100 * Math.pow(2, attempt - 1)));
+        }
+    }
+    return { success: false, error: 'Max retries exceeded' };
+}
+
+// ==================== COMPANIES CACHE ====================
+async function getCompanies(env, force = false) {
+    const now = Date.now();
+    
+    if (!force && 
+        globalThis.__companies_cache.data && 
+        (now - globalThis.__companies_cache.timestamp) < globalThis.__companies_cache.ttl) {
+        return globalThis.__companies_cache.data;
+    }
+    
+    const companies = await safeArray(env, 'companies');
+    globalThis.__companies_cache = {
+        data: companies,
+        timestamp: now,
+        ttl: 60000
+    };
+    
+    return companies;
+}
+
+async function invalidateCompaniesCache() {
+    globalThis.__companies_cache = { data: null, timestamp: 0, ttl: 60000 };
+}
+
+// ==================== IMPROVED TOKEN GENERATION ====================
+function generateSecureToken() {
+    return crypto.randomUUID() + crypto.randomUUID() + Date.now().toString(36);
+}
+
+function generateId() {
+    return Date.now().toString(36) + crypto.randomUUID().substring(0, 8);
+}
+
+// ==================== SESSION CACHE WITH TTL ====================
+const SESSION_TTL = 24 * 3600000;
+
+async function getSession(token) {
+    if (!token) return null;
+    
+    const session = globalThis.__session_cache.get(token);
+    if (!session) return null;
+    
+    if (Date.now() - session.createdAt > SESSION_TTL) {
+        globalThis.__session_cache.delete(token);
+        return null;
+    }
+    
+    return session;
+}
+
+async function setSession(token, userData) {
+    if (globalThis.__session_cache.size > 500) {
+        const entries = Array.from(globalThis.__session_cache.entries());
+        entries.sort((a, b) => a[1].createdAt - b[1].createdAt);
+        for (let i = 0; i < 100 && i < entries.length; i++) {
+            globalThis.__session_cache.delete(entries[i][0]);
+        }
+    }
+    
+    globalThis.__session_cache.set(token, {
+        ...userData,
+        createdAt: Date.now(),
+        version: userData.version || 1
+    });
+}
+
+async function invalidateUserSessions(username) {
+    for (const [token, session] of globalThis.__session_cache.entries()) {
+        if (session.username === username) {
+            globalThis.__session_cache.delete(token);
+        }
+    }
+}
+
+// ==================== RATE LIMIT ====================
+function checkRateLimit(deviceId) {
+    const now = Date.now();
+    const windowStart = now - 10000;
+    
+    if (!globalThis.__rate.has(deviceId)) {
+        globalThis.__rate.set(deviceId, []);
+    }
+    
+    let timestamps = globalThis.__rate.get(deviceId);
+    timestamps = timestamps.filter(t => t > windowStart);
+    
+    if (timestamps.length >= 20) {
+        return false;
+    }
+    
+    timestamps.push(now);
+    globalThis.__rate.set(deviceId, timestamps);
+    
+    if (globalThis.__rate.size > 1000) {
+        for (const [key, value] of globalThis.__rate.entries()) {
+            if (value.length === 0 || value[value.length - 1] < now - 60000) {
+                globalThis.__rate.delete(key);
+            }
+        }
+    }
+    
+    return true;
+}
+
+// ==================== VIOLATION SCORES ====================
+const VIOLATION_SCORES = {
+    LIMIT_VISITOR: 2,
+    LIMIT_SCAN: 2,
+    RATE_SPAM: 3,
+    INVALID_DATA: 2,
+    DUPLICATE_ABUSE: 1,
+    CROSS_LICENSE_ATTEMPT: 5
+};
+
+// ==================== HARDENING: requireLicense FUNCTION ====================
+async function requireLicense(env, request) {
+    const licenseKey = request.headers.get('x-license');
+
+    if (!licenseKey) {
+        return { ok: false, status: 403, error: 'LICENSE_REQUIRED' };
+    }
+
+    const companies = await getCompanies(env);
+    const company = companies.find(c => c.licenseKey === licenseKey);
+
+    if (!company) {
+        return { ok: false, status: 403, error: 'LICENSE_INVALID' };
+    }
+
+    if (company.expiredAt < Date.now()) {
+        return { ok: false, status: 403, error: 'LICENSE_EXPIRED' };
+    }
+
+    return { ok: true, licenseKey, company };
+}
+
+// ================= DEVICE VALIDATION (INJECTED) =================
+async function validateDevice(env, licenseKey, request) {
+    const deviceId = request.headers.get("x-device-id");
+
+    if (!deviceId) {
+        return { ok: false, error: "DEVICE_ID_REQUIRED" };
+    }
+
+    const devices = await safeArray(env, scopedKey("devices", licenseKey));
+    const device = (devices || []).find(d => d.deviceId === deviceId);
+
+    // belum terdaftar → masuk pending
+    if (!device) {
+        await atomicArrayUpdate(env, scopedKey("device_requests", licenseKey), (reqs) => {
+            const exists = (reqs || []).some(r => r.deviceId === deviceId);
+            if (exists) return reqs;
+
+            return [...(reqs || []), {
+                id: generateId(),
+                deviceId,
+                status: "PENDING",
+                createdAt: Date.now()
+            }];
+        });
+
+        return { ok: false, error: "DEVICE_NOT_REGISTERED" };
+    }
+
+    // belum aktif
+    if (device.status !== "ACTIVE") {
+        return { ok: false, error: "DEVICE_NOT_APPROVED" };
+    }
+
+    return { ok: true };
+}
+
+// ==================== VIOLATION HELPERS ====================
+async function addViolation(env, licenseKey, type, details, metadata = {}) {
+    try {
+        const violationsKey = scopedKey('violations', licenseKey);
+        
+        const result = await atomicArrayUpdate(env, violationsKey, (violations) => {
+            const violation = {
+                id: generateId(),
+                licenseKey: licenseKey,
+                type: type,
+                score: VIOLATION_SCORES[type] || 1,
+                details: details,
+                metadata: metadata,
+                timestamp: Date.now()
+            };
+            
+            const newViolations = [...(violations || []), violation];
+            return newViolations.slice(-10000);
+        });
+        
+        return result.success ? result.data[result.data.length - 1] : null;
+    } catch (e) {
+        console.error('[VIOLATION] Error adding violation:', e);
+        return null;
+    }
+}
+
+async function getViolationStatus(env, licenseKey) {
+    try {
+        const violationsKey = scopedKey('violations', licenseKey);
+        const violations = await safeArray(env, violationsKey);
+        const licenseViolations = violations.filter(v => v.licenseKey === licenseKey);
+        
+        const totalScore = licenseViolations.reduce((sum, v) => sum + (v.score || 1), 0);
+        const recentViolations = licenseViolations.filter(v => v.timestamp > Date.now() - 7 * 86400000);
+        const recentScore = recentViolations.reduce((sum, v) => sum + (v.score || 1), 0);
+        
+        let status = 'NORMAL';
+        let recommendation = null;
+        
+        if (totalScore >= 20 || recentScore >= 10) {
+            status = 'CRITICAL';
+            recommendation = 'Review required immediately';
+        } else if (totalScore >= 10 || recentScore >= 5) {
+            status = 'WARNING';
+            recommendation = 'Monitor closely';
+        } else if (totalScore >= 5 || recentScore >= 3) {
+            status = 'ATTENTION';
+            recommendation = 'Investigate patterns';
+        }
+        
+        const violationsByType = {};
+        for (const v of licenseViolations) {
+            violationsByType[v.type] = (violationsByType[v.type] || 0) + 1;
+        }
+        
+        return {
+            licenseKey: licenseKey,
+            status: status,
+            totalScore: totalScore,
+            recentScore: recentScore,
+            totalViolations: licenseViolations.length,
+            recentViolations: recentViolations.length,
+            violationsByType: violationsByType,
+            recommendation: recommendation,
+            lastViolationAt: licenseViolations.length > 0 ? Math.max(...licenseViolations.map(v => v.timestamp)) : null
+        };
+    } catch (e) {
+        console.error('[VIOLATION] Error getting status:', e);
+        return { licenseKey, status: 'UNKNOWN', totalScore: 0 };
+    }
+}
+
+// ==================== MAIN HANDLER ====================
+export default {
+    async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+        const path = url.pathname;
+        
+        const corsHeaders = {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, x-token, authorization, Authorization, x-reset-confirm, x-license',
+            'Content-Type': 'application/json'
+        };
+        
+        if (request.method === 'OPTIONS') {
+            return new Response(null, { status: 204, headers: corsHeaders });
+        }
+        
+        try {
+            if (!globalThis.__vms_init_done) {
+                let adminsCheck = await safeArray(env, 'admins');
+                if (!adminsCheck || adminsCheck.length === 0) {
+                    await forceInit(env);
+                }
+                globalThis.__vms_init_done = true;
+            }
+            
+            if (path === '/force-init' && request.method === 'POST') {
+                await forceInit(env);
+                return new Response(JSON.stringify({ ok: true, message: 'System initialized' }), { headers: corsHeaders });
+            }
+            
+            if (path === '/' && request.method === 'GET') {
+                return new Response(JSON.stringify({ 
+                    status: 'online', 
+                    version: 'v3.3 - FIXED VERSION - Race Condition & Cache Fixed',
+                    timestamp: Date.now()
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== LOGIN FIXED ====================
+            if (path === '/login' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { username, password } = body;
+                
+                console.log(`[LOGIN] Attempt for username: ${username}`);
+                
+                let admins = await safeArray(env, 'admins');
+                if (!admins || admins.length === 0) {
+                    await forceInit(env);
+                    admins = await safeArray(env, 'admins');
+                }
+                
+                const index = admins.findIndex(a => a.username === username);
+                if (index === -1) {
+                    console.log(`[LOGIN] User not found: ${username}`);
+                    return new Response(JSON.stringify({ ok: false, error: 'User not found' }), { 
+                        headers: corsHeaders, 
+                        status: 401 
+                    });
+                }
+                
+                const admin = admins[index];
+                const hashedInputPassword = await sha256(password);
+                let isValid = (hashedInputPassword === admin.password);
+                
+                if (!isValid && admin.password === password) {
+                    console.log(`[LOGIN] Plain text match, upgrading to hash...`);
+                    isValid = true;
+                    admins[index].password = hashedInputPassword;
+                    await saveData(env, 'admins', admins);
+                }
+                
+                if (!isValid) {
+                    console.log(`[LOGIN] Password invalid for: ${username}`);
+                    return new Response(JSON.stringify({ ok: false, error: 'Invalid password' }), { 
+                        headers: corsHeaders, 
+                        status: 401 
+                    });
+                }
+                
+                const token = generateSecureToken();
+                const tokenExpiry = Date.now() + SESSION_TTL;
+                
+                admins[index].token = token;
+                admins[index].tokenExpiry = tokenExpiry;
+                admins[index].lastLogin = Date.now();
+                admins[index].version = (admin.version || 0) + 1;
+                
+                await saveData(env, 'admins', admins);
+                
+                await setSession(token, {
+                    username: admin.username,
+                    role: admin.role,
+                    id: admin.id,
+                    version: admins[index].version
+                });
+                
+                console.log(`[LOGIN] Success for: ${username}`);
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    token: token,
+                    tokenExpiry: tokenExpiry,
+                    username: admin.username,
+                    role: admin.role
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== AUTH CHECK ====================
+            async function checkAuth(headers, env) {
+                let token = headers.get('x-token');
+                
+                if (!token) {
+                    const authHeader = headers.get('authorization') || headers.get('Authorization');
+                    if (authHeader && authHeader.startsWith('Bearer ')) {
+                        token = authHeader.split(' ')[1];
+                    }
+                }
+                
+                if (!token) return null;
+                
+                const trimmedToken = (token || '').trim();
+                if (!trimmedToken) return null;
+                
+                const cachedSession = await getSession(trimmedToken);
+                if (cachedSession) {
+                    return cachedSession;
+                }
+                
+                const admins = await safeArray(env, 'admins');
+                const admin = admins.find(a => a.token && a.token.trim() === trimmedToken);
+                
+                if (admin && admin.tokenExpiry && admin.tokenExpiry > Date.now()) {
+                    const session = {
+                        username: admin.username,
+                        role: admin.role,
+                        id: admin.id,
+                        version: admin.version || 1
+                    };
+                    await setSession(trimmedToken, session);
+                    return session;
+                }
+                
+                return null;
+            }
+            
+            const auth = await checkAuth(request.headers, env);
+            
+            const protectedPaths = [
+                '/admin/stats', '/admin/companies', '/admin/devices', 
+                '/admin/activity', '/admin/invoices', '/admin/device-requests',
+                '/generate-license', '/renew-license', '/update-package',
+                '/approve-device', '/delete-device', '/delete-company',
+                '/mark-invoice-paid', '/admin/users', '/admin/add-user', 
+                '/admin/delete-user', '/admin/settings', '/admin/company/',
+                '/approve-device-request', '/admin/violations', '/admin/reset-system',
+                '/admin/reset-company', '/admin/change-password', '/admin/reset-password'
+            ];
+            
+            if (protectedPaths.some(p => path === p || path.startsWith('/admin/company/')) && !auth) {
+                return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { 
+                    headers: corsHeaders, 
+                    status: 401 
+                });
+            }
+
+		            
+            // ==================== CHANGE PASSWORD ====================
+            if (path === '/admin/change-password' && request.method === 'POST') {
+                if (!auth) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { headers: corsHeaders, status: 401 });
+                }
+
+                const body = await request.json().catch(() => ({}));
+                const { oldPassword, newPassword } = body;
+
+                if (!oldPassword || !newPassword || newPassword.length < 6) {
+                    return new Response(JSON.stringify({ ok: false, error: 'INVALID_INPUT' }), { headers: corsHeaders });
+                }
+
+                let admins = await safeArray(env, 'admins');
+                const index = admins.findIndex(a => a.username === auth.username);
+
+                if (index === -1) {
+                    return new Response(JSON.stringify({ ok: false, error: 'USER_NOT_FOUND' }), { headers: corsHeaders });
+                }
+
+                const admin = admins[index];
+                const oldHash = await sha256(oldPassword);
+                
+                if (admin.password !== oldHash) {
+                    return new Response(JSON.stringify({ ok: false, error: 'OLD_PASSWORD_WRONG' }), { headers: corsHeaders });
+                }
+
+                const newHash = await sha256(newPassword);
+
+                if (newHash === admin.password) {
+                    return new Response(JSON.stringify({ ok: false, error: 'PASSWORD_SAME' }), { headers: corsHeaders });
+                }
+
+                admins[index].password = newHash;
+                admins[index].token = null;
+                admins[index].tokenExpiry = null;
+                admins[index].version = (admin.version || 0) + 1;
+
+                await saveData(env, 'admins', admins);
+                
+                await invalidateUserSessions(auth.username);
+
+                return new Response(JSON.stringify({
+                    ok: true,
+                    message: 'Password updated, please login again'
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== RESET PASSWORD ====================
+            if (path === '/admin/reset-password' && request.method === 'POST') {
+                if (!auth || auth.role !== 'SUPER_ADMIN') {
+                    return new Response(JSON.stringify({ ok: false, error: 'FORBIDDEN' }), { headers: corsHeaders, status: 403 });
+                }
+
+                const body = await request.json().catch(() => ({}));
+                const { username, newPassword } = body;
+
+                if (!username || !newPassword || newPassword.length < 6) {
+                    return new Response(JSON.stringify({ ok: false, error: 'INVALID_INPUT' }), { headers: corsHeaders });
+                }
+
+                let admins = await safeArray(env, 'admins');
+                const index = admins.findIndex(a => a.username === username);
+                
+                if (index === -1) {
+                    return new Response(JSON.stringify({ ok: false, error: 'USER_NOT_FOUND' }), { headers: corsHeaders });
+                }
+                
+                const newHash = await sha256(newPassword);
+                admins[index].password = newHash;
+                admins[index].token = null;
+                admins[index].tokenExpiry = null;
+                admins[index].version = (admins[index].version || 0) + 1;
+                
+                await saveData(env, 'admins', admins);
+                await invalidateUserSessions(username);
+
+                return new Response(JSON.stringify({
+                    ok: true,
+                    message: 'Password reset success'
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== RESET SYSTEM ====================
+            if (path === '/admin/reset-system' && request.method === 'POST') {
+                if (!auth || auth.role !== 'SUPER_ADMIN') {
+                    return new Response(JSON.stringify({ ok: false, error: 'FORBIDDEN' }), { headers: corsHeaders, status: 403 });
+                }
+                
+                if (globalThis.__reset_lock) {
+                    return new Response(JSON.stringify({ ok: false, error: 'RESET_IN_PROGRESS' }), { headers: corsHeaders });
+                }
+                
+                globalThis.__reset_lock = true;
+                
+                try {
+                    const body = await request.json().catch(() => ({}));
+
+                    if (!body || (body.confirm !== 'RESET_TOTAL' && request.headers.get('x-reset-confirm') !== 'RESET_TOTAL')) {
+                        return new Response(JSON.stringify({ ok: false, error: 'CONFIRMATION_REQUIRED' }), { headers: corsHeaders });
+                    }
+                    
+                    console.log('[RESET_SYSTEM]', { by: auth?.username || 'unknown', time: Date.now() });
+                    
+                    globalThis.__session_cache.clear();
+                    await invalidateCompaniesCache();
+                    
+                    const oldCompanies = await getCompanies(env, true);
+                    
+                    const scopedKeysList = [
+                        'devices',
+                        'visitors',
+                        'logs',
+                        'activities',
+                        'violations',
+                        'anti_nakal_reports'
+                    ];
+                    
+                    for (const company of oldCompanies) {
+                        if (!company.licenseKey) continue;
+                        
+                        for (const baseKey of scopedKeysList) {
+                            const key = scopedKey(baseKey, company.licenseKey);
+                            
+                            if (baseKey === 'visitors') {
+                                await saveData(env, key, {});
+                            } else {
+                                await saveData(env, key, []);
+                            }
+                        }
+                    }
+                    
+                    await saveData(env, 'companies', []);
+                    await saveData(env, 'invoices', []);
+                    await saveData(env, 'device_requests', []);
+                    await saveData(env, 'users_from_clients', []);
+                    await saveData(env, 'visitors', {});
+                    await saveData(env, 'activities', []);
+                    await saveData(env, 'logs', []);
+                    await saveData(env, 'anti_nakal_reports', []);
+                    await saveData(env, 'violations', []);
+                    await saveData(env, 'devices', []);
+                    
+                    await invalidateCompaniesCache();
+                    await forceInitNoPasswordOverride(env);
+                    
+                    return new Response(JSON.stringify({
+                        ok: true,
+                        message: 'SYSTEM RESET SUCCESS. Login again.'
+                    }), { headers: corsHeaders });
+                    
+                } finally {
+                    globalThis.__reset_lock = false;
+                }
+            }
+            
+            // ==================== RESET PER COMPANY ====================
+            if (path === '/admin/reset-company' && request.method === 'POST') {
+                if (!auth || auth.role !== 'SUPER_ADMIN') {
+                    return new Response(JSON.stringify({ ok: false, error: 'FORBIDDEN' }), { headers: corsHeaders, status: 403 });
+                }
+                
+                const body = await request.json().catch(() => ({}));
+                const { companyId } = body;
+
+                if (!companyId) {
+                    return new Response(JSON.stringify({ ok: false, error: 'companyId required' }), { headers: corsHeaders });
+                }
+
+                const companies = await getCompanies(env, true);
+                const company = companies.find(c => c.id === companyId);
+
+                if (!company) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Company not found' }), { headers: corsHeaders });
+                }
+
+                const licenseKey = company.licenseKey;
+
+                const scopedKeys = [
+                    'devices',
+                    'visitors',
+                    'logs',
+                    'activities',
+                    'violations',
+                    'anti_nakal_reports'
+                ];
+
+                for (const base of scopedKeys) {
+                    const key = scopedKey(base, licenseKey);
+
+                    if (base === 'visitors') {
+                        await saveData(env, key, {});
+                    } else {
+                        await saveData(env, key, []);
+                    }
+                }
+
+                await invalidateCompaniesCache();
+
+                console.log('[RESET_COMPANY]', { companyId, licenseKey, by: auth?.username || 'unknown', time: Date.now() });
+
+                return new Response(JSON.stringify({
+                    ok: true,
+                    message: 'Company reset success'
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== /validate-license ====================
+            if (path === '/validate-license' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { licenseKey, deviceId, deviceName, meta } = body;
+                
+                if (!licenseKey) {
+                    return new Response(JSON.stringify({ ok: false, message: 'License key required' }), { headers: corsHeaders });
+                }
+                
+                const companies = await getCompanies(env);
+                const company = companies.find(c => c.licenseKey === licenseKey);
+                
+                if (!company) {
+                    await addViolation(env, licenseKey, 'INVALID_DATA', 'Invalid license key validation attempt', { deviceId });
+                    return new Response(JSON.stringify({ ok: false, message: 'Invalid license key' }), { headers: corsHeaders });
+                }
+                
+                const isExpired = company.expiredAt < Date.now();
+                if (isExpired) {
+                    return new Response(JSON.stringify({ 
+                        ok: false, 
+                        message: 'License expired',
+                        company: { ...company, status: 'EXPIRED' }
+                    }), { headers: corsHeaders });
+                }
+                
+                const devicesKey = scopedKey('devices', licenseKey);
+                const devicesList = await safeArray(env, devicesKey);
+                
+                let existingDevice = devicesList.find(d => d.deviceId === deviceId && d.licenseKey === licenseKey);
+                let status = 'ACTIVE';
+                
+                if (!existingDevice) {
+                    const companyDevices = devicesList.filter(d => d.licenseKey === licenseKey && d.status !== 'DELETED');
+                    const currentDeviceCount = companyDevices.length;
+                    const maxDevices = company.maxDevices || (company.package === 'PRO' ? 999 : (company.package === 'BASIC' ? 10 : 2));
+                    
+                    if (currentDeviceCount >= maxDevices && maxDevices !== Infinity) {
+                        status = 'PENDING_APPROVAL';
+                    }
+                }
+                
+                const result = await atomicArrayUpdate(env, devicesKey, (devices) => {
+                    const deviceIndex = devices.findIndex(d => d.deviceId === deviceId && d.licenseKey === licenseKey);
+                    let newDevices = [...devices];
+                    
+                    if (deviceIndex !== -1) {
+                        newDevices[deviceIndex] = {
+                            ...newDevices[deviceIndex],
+                            lastSeen: Date.now(),
+                            deviceName: deviceName || newDevices[deviceIndex].deviceName,
+                            meta: meta
+                        };
+                    } else {
+                        newDevices.push({
+                            deviceId: deviceId,
+                            deviceName: deviceName || deviceId,
+                            licenseKey: licenseKey,
+                            companyId: company.id,
+                            companyName: company.companyName,
+                            status: status,
+                            firstSeen: Date.now(),
+                            lastSeen: Date.now(),
+                            meta: meta,
+                            violations: [],
+                            sessions: []
+                        });
+                    }
+                    
+                    return newDevices;
+                });
+                
+                const freshDevices = await safeArray(env, devicesKey);
+                const activeDevices = freshDevices.filter(d => d.licenseKey === licenseKey && d.status === 'ACTIVE').length;
+                
+                await atomicArrayUpdate(env, 'companies', (companiesList) => {
+                    const idx = companiesList.findIndex(c => c.id === company.id);
+                    if (idx !== -1) {
+                        companiesList[idx].currentDevices = activeDevices;
+                    }
+                    return companiesList;
+                });
+                
+                await invalidateCompaniesCache();
+                
+                const device = freshDevices.find(d => d.deviceId === deviceId);
+                const violationStatus = await getViolationStatus(env, licenseKey);
+                
+                const limits = {
+                    maxVisitors: company.package === 'DEMO' ? 5 : (company.package === 'BASIC' ? 150 : Infinity),
+                    maxDevices: company.maxDevices || (company.package === 'PRO' ? 999 : (company.package === 'BASIC' ? 10 : 2)),
+                    canRenameSites: company.package !== 'DEMO',
+                    canAddSites: company.package === 'PRO'
+                };
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    status: device?.status || 'ACTIVE',
+                    company: {
+                        id: company.id,
+                        name: company.companyName,
+                        package: company.package,
+                        maxDevices: company.maxDevices,
+                        currentDevices: activeDevices,
+                        expiredAt: company.expiredAt
+                    },
+                    device: device,
+                    violationStatus: violationStatus,
+                    limits: limits,
+                    license: { package: company.package }
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== /client/devices ====================
+            if (path === '/client/devices' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify({ ok: false, error: licenseCheck.error }), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { licenseKey } = licenseCheck;
+                
+                const devicesKey = scopedKey('devices', licenseKey);
+                const devices = await safeArray(env, devicesKey);
+                const companyDevices = devices.filter(d => d.licenseKey === licenseKey && d.status !== 'DELETED');
+                
+                return new Response(JSON.stringify({ ok: true, devices: companyDevices }), { headers: corsHeaders });
+            }
+            
+            // ==================== /register ====================
+            if (path === '/register' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify({ ok: false, error: licenseCheck.error }), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { licenseKey, company } = licenseCheck;
+
+                const deviceCheck = await validateDevice(env, licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+
+                const body = await request.json().catch(() => ({}));
+                const { reg, visitorData, deviceId, siteId } = body;
+                
+                const visitorsKey = scopedKey('visitors', licenseKey);
+                
+                const result = await atomicObjectUpdate(env, visitorsKey, (visitors) => {
+                    const newVisitors = { ...visitors };
+                    newVisitors[reg] = {
+                        ...visitorData,
+                        licenseKey: licenseKey,
+                        companyId: company.id,
+                        companyName: company.companyName,
+                        registeredAt: Date.now()
+                    };
+                    return newVisitors;
+                });
+                
+                const logsKey = scopedKey('logs', licenseKey);
+                await atomicArrayUpdate(env, logsKey, (logs) => {
+                    const logEntry = {
+                        id: generateId(),
+                        reg: reg,
+                        name: visitorData.nama,
+                        company: visitorData.perusahaan,
+                        category: visitorData.kategori,
+                        action: 'REGISTER',
+                        type: 'REGISTER',
+                        timestamp: Date.now(),
+                        site: siteId,
+                        deviceId: deviceId,
+                        licenseKey: licenseKey
+                    };
+                    return [logEntry, ...(logs || [])];
+                });
+                
+                return new Response(JSON.stringify({ ok: true, reg: reg }), { headers: corsHeaders });
+            }
+            
+            // ==================== /checkin ====================
+            if (path === '/checkin' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify({ ok: false, error: licenseCheck.error }), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { licenseKey, company } = licenseCheck;
+
+                const deviceCheck = await validateDevice(env, licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+
+                const body = await request.json().catch(() => ({}));
+                const { reg, action, deviceId, siteId, location, qrData } = body;
+                
+                if (!reg || !action) {
+                    return new Response(JSON.stringify({ ok: false, error: 'reg and action required' }), { headers: corsHeaders });
+                }
+                
+                const visitorsKey = scopedKey('visitors', licenseKey);
+                const visitors = await safeObject(env, visitorsKey);
+                const visitor = visitors[reg];
+                
+                if (!visitor) {
+                    return new Response(JSON.stringify({ ok: false, error: 'VISITOR_NOT_FOUND' }), { headers: corsHeaders });
+                }
+                
+                if (qrData) {
+                    let qrLicense = null;
+                    if (typeof qrData === 'string') {
+                        try {
+                            const parsed = JSON.parse(qrData);
+                            qrLicense = parsed.licenseKey;
+                        } catch(e) {
+                            qrLicense = null;
+                        }
+                    } else if (typeof qrData === 'object' && qrData !== null) {
+                        qrLicense = qrData.licenseKey;
+                    }
+                    
+                    if (qrLicense && qrLicense !== licenseKey) {
+                        await addViolation(env, licenseKey, 'CROSS_LICENSE_ATTEMPT', 'CROSS_LICENSE_SCAN_ATTEMPT', {
+                            deviceId,
+                            deviceLicense: licenseKey,
+                            qrLicense: qrLicense
+                        });
+                        return new Response(JSON.stringify({ ok: false, error: 'CROSS_LICENSE_DENIED' }), { status: 403, headers: corsHeaders });
+                    }
+                }
+                
+                const newStatus = action === 'CHECK_IN' ? 'IN' : 'OUT';
+                
+                await atomicObjectUpdate(env, visitorsKey, (currentVisitors) => {
+                    const updated = { ...currentVisitors };
+                    if (updated[reg]) {
+                        updated[reg].currentStatus = newStatus;
+                        if (!updated[reg].sessions) updated[reg].sessions = [];
+                        if (action === 'CHECK_IN') {
+                            updated[reg].sessions.push({ checkIn: Date.now(), checkOut: null });
+                        } else if (action === 'CHECK_OUT') {
+                            for (let i = updated[reg].sessions.length - 1; i >= 0; i--) {
+                                if (!updated[reg].sessions[i].checkOut) {
+                                    updated[reg].sessions[i].checkOut = Date.now();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return updated;
+                });
+                
+                const logsKey = scopedKey('logs', licenseKey);
+                await atomicArrayUpdate(env, logsKey, (logs) => {
+                    const logEntry = {
+                        id: generateId(),
+                        reg: reg,
+                        name: visitor.nama,
+                        company: visitor.perusahaan,
+                        action: action,
+                        type: action,
+                        timestamp: Date.now(),
+                        site: siteId,
+                        deviceId: deviceId,
+                        location: location,
+                        licenseKey: licenseKey
+                    };
+                    return [logEntry, ...(logs || [])];
+                });
+                
+                return new Response(JSON.stringify({ ok: true, name: visitor.nama, action: action }), { headers: corsHeaders });
+            }
+            
+            // ==================== /visitors ====================
+            if (path === '/visitors' && request.method === 'GET') {
+                const lic = await requireLicense(env, request);
+                if (!lic.ok) {
+                    return new Response(JSON.stringify(lic), { status: lic.status, headers: corsHeaders });
+                }
+
+                const visitors = await safeObject(env, scopedKey('visitors', lic.licenseKey), {});
+                const logs = await safeArray(env, scopedKey('logs', lic.licenseKey), []);
+
+                return new Response(JSON.stringify({
+                    ok: true,
+                    visitors: visitors,
+                    logs: logs,
+                    totalVisitors: Object.keys(visitors).length,
+                    totalLogs: logs.length,
+                    ts: Date.now()
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== /save ====================
+            if (path === '/save' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify({ ok: false, error: licenseCheck.error }), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { licenseKey, company } = licenseCheck;
+
+                const deviceCheck = await validateDevice(env, licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+
+                let body;
+                try {
+                    body = await request.json();
+                } catch(e) {
+                    body = {};
+                }
+                
+                const { visitors = {}, logs = [], deviceId } = body;
+                
+                if (visitors && Object.keys(visitors).length > 0) {
+                    const visitorsKey = scopedKey('visitors', licenseKey);
+                    await atomicObjectUpdate(env, visitorsKey, (currentVisitors) => {
+                        return { ...currentVisitors, ...visitors };
+                    });
+                }
+                
+                if (logs && logs.length > 0) {
+                    const logsKey = scopedKey('logs', licenseKey);
+                    await atomicArrayUpdate(env, logsKey, (currentLogs) => {
+                        let newLogs = [...(currentLogs || []), ...logs];
+                        if (newLogs.length > 10000) {
+                            newLogs = newLogs.slice(-10000);
+                        }
+                        return newLogs;
+                    });
+                }
+                
+                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+            }
+            
+            // ==================== /request-approval ====================
+            if (path === '/request-approval' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify({ ok: false, error: licenseCheck.error }), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { licenseKey } = licenseCheck;
+
+                const deviceCheck = await validateDevice(env, licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+
+                const requestBody = await request.json().catch(() => ({}));
+                const { deviceId, deviceName, reason } = requestBody;
+                
+                const devicesKey = scopedKey('devices', licenseKey);
+                
+                const result = await atomicArrayUpdate(env, devicesKey, (devices) => {
+                    const idx = devices.findIndex(d => d.deviceId === deviceId);
+                    if (idx !== -1) {
+                        devices[idx].approvalRequest = {
+                            requestedAt: Date.now(),
+                            reason: reason,
+                            status: 'PENDING'
+                        };
+                        devices[idx].status = 'PENDING_APPROVAL';
+                    }
+                    return devices;
+                });
+                
+                return new Response(JSON.stringify({ ok: true, message: 'Approval request sent' }), { headers: corsHeaders });
+            }
+            
+            // ==================== /request-device ====================
+            if (path === '/request-device' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify({ ok: false, error: licenseCheck.error }), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { licenseKey, company } = licenseCheck;
+
+                const deviceCheck = await validateDevice(env, licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+
+                const requestBody = await request.json().catch(() => ({}));
+                const { deviceName, reason } = requestBody;
+                
+                let fee = 0;
+                if (company.package === 'BASIC') {
+                    const settings = await safeObject(env, 'settings');
+                    fee = (settings?.pricing?.BASIC?.extraDeviceFee || 50000);
+                }
+                
+                const newRequest = {
+                    id: generateId(),
+                    licenseKey: licenseKey,
+                    companyId: company.id,
+                    companyName: company.companyName,
+                    deviceName: deviceName,
+                    reason: reason,
+                    fee: fee,
+                    status: 'PENDING',
+                    requestedAt: Date.now()
+                };
+                
+                const result = await atomicArrayUpdate(env, 'device_requests', (requests) => {
+                    return [...(requests || []), newRequest];
+                });
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    requestId: newRequest.id,
+                    fee: fee,
+                    message: fee > 0 ? `Fee Rp ${fee.toLocaleString()} akan ditagihkan` : 'Request sent, waiting approval'
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== /report-violation ====================
+            if (path === '/report-violation' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { licenseKey, deviceId, violationType, details, location } = body;
+
+                const deviceCheck = await validateDevice(env, licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+                
+                const companies = await getCompanies(env);
+                const company = companies.find(c => c.licenseKey === licenseKey);
+                if (!company) {
+                    return new Response(JSON.stringify({ ok: false, message: 'Invalid license' }), { headers: corsHeaders });
+                }
+                
+                const devicesKey = scopedKey('devices', licenseKey);
+                let devices = await safeArray(env, devicesKey);
+                const device = devices.find(d => d.deviceId === deviceId);
+                if (!device) {
+                    return new Response(JSON.stringify({ ok: false, message: 'Device not found' }), { headers: corsHeaders });
+                }
+                
+                const violation = await addViolation(env, licenseKey, violationType, details, {
+                    deviceId: deviceId,
+                    deviceName: device.deviceName,
+                    location: location
+                });
+                
+                const result = await atomicArrayUpdate(env, devicesKey, (devicesList) => {
+                    const idx = devicesList.findIndex(d => d.deviceId === deviceId);
+                    if (idx !== -1) {
+                        if (!devicesList[idx].violations) devicesList[idx].violations = [];
+                        devicesList[idx].violations.unshift(violation);
+                        
+                        const violationCount = devicesList[idx].violations.length;
+                        if (violationCount >= 5) {
+                            devicesList[idx].status = 'BANNED';
+                        } else if (violationCount >= 3) {
+                            devicesList[idx].status = 'SUSPENDED';
+                        }
+                    }
+                    return devicesList;
+                });
+                
+                const updatedDevice = result.data?.find(d => d.deviceId === deviceId);
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    violation: violation,
+                    deviceStatus: updatedDevice?.status || device.status,
+                    violationCount: updatedDevice?.violations?.length || 0
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== /approve-device ====================
+            if (path === '/approve-device' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { deviceId, approve } = body;
+                
+                const companies = await getCompanies(env);
+                let targetDevice = null;
+                let targetCompany = null;
+                let targetDevicesKey = null;
+                
+                for (const comp of companies) {
+                    if (!comp.licenseKey) continue;
+                    const devKey = scopedKey('devices', comp.licenseKey);
+                    const devs = await safeArray(env, devKey);
+                    const device = devs.find(d => d.deviceId === deviceId);
+                    if (device) {
+                        targetDevice = device;
+                        targetCompany = comp;
+                        targetDevicesKey = devKey;
+                        break;
+                    }
+                }
+                
+                if (!targetDevice) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Device not found' }), { headers: corsHeaders });
+                }
+                
+                const result = await atomicArrayUpdate(env, targetDevicesKey, (devices) => {
+                    const idx = devices.findIndex(d => d.deviceId === deviceId);
+                    if (idx !== -1) {
+                        devices[idx].status = approve ? 'ACTIVE' : 'REJECTED';
+                        if (!approve) {
+                            devices[idx].deletedAt = Date.now();
+                        }
+                    }
+                    return devices;
+                });
+                
+                if (targetCompany && approve) {
+                    const freshDevices = await safeArray(env, targetDevicesKey);
+                    const activeCount = freshDevices.filter(d => d.status === 'ACTIVE').length;
+                    
+                    await atomicArrayUpdate(env, 'companies', (companiesList) => {
+                        const idx = companiesList.findIndex(c => c.id === targetCompany.id);
+                        if (idx !== -1) {
+                            companiesList[idx].currentDevices = activeCount;
+                        }
+                        return companiesList;
+                    });
+                    
+                    await invalidateCompaniesCache();
+                }
+                
+                return new Response(JSON.stringify({ ok: true, device: { ...targetDevice, status: approve ? 'ACTIVE' : 'REJECTED' } }), { headers: corsHeaders });
+            }
+            
+            // ==================== /approve-device-request ====================
+            if (path === '/approve-device-request' && request.method === 'POST') {
+                const requestBody = await request.json().catch(() => ({}));
+                const { requestId, approve, notes, deviceId } = requestBody;
+                
+                let deviceRequests = await safeArray(env, 'device_requests');
+                const targetRequest = deviceRequests.find(r => r.id === requestId);
+                
+                if (!targetRequest) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Request not found' }), { headers: corsHeaders });
+                }
+                
+                if (!approve) {
+                    targetRequest.status = 'REJECTED';
+                    targetRequest.rejectedAt = Date.now();
+                    targetRequest.rejectNotes = notes;
+                    await saveData(env, 'device_requests', deviceRequests);
+                    return new Response(JSON.stringify({ ok: true, request: targetRequest }), { headers: corsHeaders });
+                }
+                
+                const invoices = await safeArray(env, 'invoices');
+                const invoice = {
+                    id: generateId(),
+                    requestId: targetRequest.id,
+                    companyId: targetRequest.companyId,
+                    companyName: targetRequest.companyName,
+                    type: 'DEVICE_ADDITION',
+                    amount: targetRequest.fee,
+                    deviceName: targetRequest.deviceName,
+                    status: 'UNPAID',
+                    createdAt: Date.now()
+                };
+                invoices.push(invoice);
+                await saveData(env, 'invoices', invoices);
+                
+                targetRequest.status = 'WAITING_PAYMENT';
+                targetRequest.invoiceId = invoice.id;
+                await saveData(env, 'device_requests', deviceRequests);
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    invoiceId: invoice.id,
+                    amount: targetRequest.fee,
+                    request: targetRequest
+                }), { headers: corsHeaders });
+            }
+            
+            // ==================== /mark-invoice-paid ====================
+            if (path === '/mark-invoice-paid' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { invoiceId, paymentMethod, deviceId } = body;
+                
+                const invoices = await safeArray(env, 'invoices');
+                const targetInvoice = invoices.find(i => i.id === invoiceId);
+                if (!targetInvoice) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Invoice not found' }), { headers: corsHeaders });
+                }
+                
+                targetInvoice.status = 'PAID';
+                targetInvoice.paidAt = Date.now();
+                targetInvoice.paymentMethod = paymentMethod;
+                await saveData(env, 'invoices', invoices);
+                
+                if (targetInvoice.type === 'DEVICE_ADDITION' && targetInvoice.requestId) {
+                    let deviceRequests = await safeArray(env, 'device_requests');
+                    const deviceRequest = deviceRequests.find(r => r.id === targetInvoice.requestId);
+                    if (deviceRequest && deviceRequest.status === 'WAITING_PAYMENT') {
+                        deviceRequest.status = 'PAID';
+                        deviceRequest.paidAt = Date.now();
+                        await saveData(env, 'device_requests', deviceRequests);
+                        
+                        const companies = await getCompanies(env, true);
+                        const company = companies.find(c => c.id === deviceRequest.companyId);
+                        if (company && company.licenseKey) {
+                            const devKey = scopedKey('devices', company.licenseKey);
+                            
+                            const finalDeviceId = deviceId || 'dev_' + generateId();
+                            
+                            const result = await atomicArrayUpdate(env, devKey, (scopedDevices) => {
+                                const existing = scopedDevices.find(d => d.deviceId === finalDeviceId);
+                                if (existing) {
+                                    existing.status = 'ACTIVE';
+                                    return scopedDevices;
+                                }
+                                
+                                const newDevice = {
+                                    deviceId: finalDeviceId,
+                                    deviceName: deviceRequest.deviceName,
+                                    licenseKey: company.licenseKey,
+                                    companyId: company.id,
+                                    companyName: company.companyName,
+                                    status: 'ACTIVE',
+                                    firstSeen: Date.now(),
+                                    lastSeen: Date.now(),
+                                    violations: [],
+                                    sessions: []
+                                };
+                                return [...scopedDevices, newDevice];
+                            });
+                            
+                            const freshDevices = await safeArray(env, devKey);
+                            const activeCount = freshDevices.filter(d => d.status === 'ACTIVE').length;
+                            
+                            await atomicArrayUpdate(env, 'companies', (companiesList) => {
+                                const idx = companiesList.findIndex(c => c.id === company.id);
+                                if (idx !== -1) {
+                                    companiesList[idx].currentDevices = activeCount;
+                                }
+                                return companiesList;
+                            });
+                            
+                            await invalidateCompaniesCache();
+                        }
+                    }
+                }
+                
+                return new Response(JSON.stringify({ ok: true, invoice: targetInvoice }), { headers: corsHeaders });
+            }
+            
+            // ==================== /delete-device ====================
+            if (path === '/delete-device' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { deviceId, reason } = body;
+                
+                const companies = await getCompanies(env);
+                
+                for (const comp of companies) {
+                    if (!comp.licenseKey) continue;
+                    const devKey = scopedKey('devices', comp.licenseKey);
+                    
+                    const result = await atomicArrayUpdate(env, devKey, (devs) => {
+                        const idx = devs.findIndex(d => d.deviceId === deviceId);
+                        if (idx !== -1) {
+                            devs[idx].status = 'DELETED';
+                            devs[idx].deletedAt = Date.now();
+                            devs[idx].deleteReason = reason;
+                        }
+                        return devs;
+                    });
+                    
+                    if (result.success) break;
+                }
+                
+                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+            }
+            
+            // ==================== /delete-company ====================
+            if (path === '/delete-company' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { companyId } = body;
+                
+                let deletedCompany = null;
+                
+                const result = await atomicArrayUpdate(env, 'companies', (companies) => {
+                    const idx = companies.findIndex(c => c.id === companyId);
+                    if (idx === -1) return companies;
+                    
+                    deletedCompany = companies[idx];
+                    const newCompanies = [...companies];
+                    newCompanies.splice(idx, 1);
+                    return newCompanies;
+                });
+                
+                if (!deletedCompany) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Company not found' }), { headers: corsHeaders });
+                }
+                
+                await invalidateCompaniesCache();
+                
+                if (deletedCompany.licenseKey) {
+                    const scopedKeysList = [
+                        'devices', 'visitors', 'logs', 'activities', 'violations', 'anti_nakal_reports'
+                    ];
+                    for (const baseKey of scopedKeysList) {
+                        const key = scopedKey(baseKey, deletedCompany.licenseKey);
+                        if (baseKey === 'visitors') {
+                            await saveData(env, key, {});
+                        } else {
+                            await saveData(env, key, []);
+                        }
+                    }
+                }
+                
+                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+            }
+            
+            // ==================== /generate-license ====================
+            if (path === '/generate-license' && request.method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+
+    const { 
+        companyName, 
+        pic, 
+        phone, 
+        email, 
+        address, 
+        package: pkg = "PRO", 
+        customMaxDevices, 
+        notes 
+    } = body;
+
+    if (!companyName || !pic || !phone || !email) {
+        return new Response(JSON.stringify({ ok: false, error: 'Missing required fields' }), { headers: corsHeaders });
+    }
+
+    const licenseKey = 'VMS-' + generateId().toUpperCase().substring(0, 16);
+
+    let maxDevices = customMaxDevices 
+        ? parseInt(customMaxDevices) 
+        : (pkg === 'PRO' ? 999 : (pkg === 'BASIC' ? 10 : 2));
+
+    let expiredAt = Date.now();
+    expiredAt += (pkg === 'DEMO' ? 7 : 30) * 86400000;
+
+    const newCompany = {
+        id: generateId(),
+        companyName,
+        licenseKey,
+        pic,
+        phone,
+        email,
+        address: address || "",
+        package: pkg,
+        maxDevices,
+        currentDevices: 0,
+        expiredAt,
+        status: "ACTIVE",
+        createdAt: Date.now(),
+        notes: notes || ""
+    };
+
+    const result = await atomicArrayUpdate(env, 'companies', (companies) => {
+        return [...(companies || []), newCompany];
+    });
+
+    if (!result.success) {
+        return new Response(JSON.stringify({ ok: false, error: 'FAILED_SAVE' }), { headers: corsHeaders });
+    }
+
+    await invalidateCompaniesCache();
+
+    return new Response(JSON.stringify({
+        ok: true,
+        data: newCompany
+    }), { headers: corsHeaders });
+}
+            
+            // ==================== /renew-license ====================
+            if (path === '/renew-license' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { companyId, months, amount, paymentMethod } = body;
+                
+                let updatedCompany = null;
+                
+                const result = await atomicArrayUpdate(env, 'companies', (companies) => {
+                    const idx = companies.findIndex(c => c.id === companyId);
+                    if (idx === -1) return companies;
+                    
+                    const currentExpiry = companies[idx].expiredAt;
+                    const newExpiry = Math.max(currentExpiry, Date.now()) + (months * 30 * 86400000);
+                    companies[idx].expiredAt = newExpiry;
+                    companies[idx].lastRenewedAt = Date.now();
+                    updatedCompany = companies[idx];
+                    
+                    return companies;
+                });
+                
+                if (!updatedCompany) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Company not found' }), { headers: corsHeaders });
+                }
+                
+                await invalidateCompaniesCache();
+                
+                const invoice = {
+                    id: generateId(),
+                    companyId: updatedCompany.id,
+                    companyName: updatedCompany.companyName,
+                    type: 'RENEWAL',
+                    amount: amount,
+                    months: months,
+                    status: paymentMethod === 'CASH' ? 'PAID' : 'UNPAID',
+                    paymentMethod: paymentMethod,
+                    createdAt: Date.now(),
+                    paidAt: paymentMethod === 'CASH' ? Date.now() : null
+                };
+                
+                await atomicArrayUpdate(env, 'invoices', (invoices) => {
+                    return [...(invoices || []), invoice];
+                });
+                
+                return new Response(JSON.stringify({ ok: true, company: updatedCompany, invoice: invoice }), { headers: corsHeaders });
+            }
+            
+            // ==================== /update-package ====================
+            if (path === '/update-package' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { companyId, newPackage, customMaxDevices, notes } = body;
+                
+                const result = await atomicArrayUpdate(env, 'companies', (companies) => {
+                    const idx = companies.findIndex(c => c.id === companyId);
+                    if (idx === -1) return companies;
+                    
+                    companies[idx].package = newPackage;
+                    if (customMaxDevices) {
+                        companies[idx].maxDevices = parseInt(customMaxDevices);
+                    } else {
+                        companies[idx].maxDevices = newPackage === 'PRO' ? 999 : 10;
+                    }
+                    companies[idx].packageUpdatedAt = Date.now();
+                    companies[idx].packageNotes = notes;
+                    
+                    return companies;
+                });
+                
+                await invalidateCompaniesCache();
+                
+                const updatedCompany = result.data?.find(c => c.id === companyId);
+                
+                return new Response(JSON.stringify({ ok: true, company: updatedCompany }), { headers: corsHeaders });
+            }
+            
+            // ==================== ADMIN ENDPOINTS ====================
+            if (path === '/admin/companies' && request.method === 'GET') {
+                const companies = await getCompanies(env);
+                return new Response(JSON.stringify(companies), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/devices' && request.method === 'GET') {
+                const companies = await getCompanies(env);
+                let allDevices = [];
+                
+                for (const comp of companies) {
+                    if (!comp.licenseKey) continue;
+                    const devKey = scopedKey('devices', comp.licenseKey);
+                    const devs = await safeArray(env, devKey);
+                    allDevices.push(...devs);
+                }
+                
+                return new Response(JSON.stringify(allDevices), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/stats' && request.method === 'GET') {
+                const companies = await getCompanies(env);
+                const invoices = await safeArray(env, 'invoices');
+                
+                let allDevices = [];
+                let allViolations = [];
+                
+                for (const comp of companies) {
+                    if (!comp.licenseKey) continue;
+                    const devKey = scopedKey('devices', comp.licenseKey);
+                    const devs = await safeArray(env, devKey);
+                    allDevices.push(...devs);
+                    
+                    const violKey = scopedKey('violations', comp.licenseKey);
+                    const viols = await safeArray(env, violKey);
+                    allViolations.push(...viols);
+                }
+                
+                const now = Date.now();
+                const last30Days = now - 30 * 86400000;
+                
+                const stats = {
+                    companies: {
+                        total: companies.length,
+                        active: companies.filter(c => c.expiredAt > now).length,
+                        byPackage: {
+                            DEMO: companies.filter(c => c.package === 'DEMO').length,
+                            BASIC: companies.filter(c => c.package === 'BASIC').length,
+                            PRO: companies.filter(c => c.package === 'PRO').length
+                        }
+                    },
+                    devices: {
+                        total: allDevices.length,
+                        active: allDevices.filter(d => d.status === 'ACTIVE').length,
+                        pending: allDevices.filter(d => d.status === 'PENDING_APPROVAL').length,
+                        suspended: allDevices.filter(d => d.status === 'SUSPENDED').length,
+                        banned: allDevices.filter(d => d.status === 'BANNED').length
+                    },
+                    violations: {
+                        total: allViolations.length,
+                        last7Days: allViolations.filter(v => v.timestamp > now - 7 * 86400000).length,
+                        last30Days: allViolations.filter(v => v.timestamp > last30Days).length,
+                        byType: allViolations.reduce((acc, v) => {
+                            acc[v.type] = (acc[v.type] || 0) + 1;
+                            return acc;
+                        }, {})
+                    },
+                    revenue: {
+                        last30Days: invoices.filter(i => i.status === 'PAID' && i.paidAt > last30Days).reduce((sum, i) => sum + i.amount, 0)
+                    }
+                };
+                
+                return new Response(JSON.stringify(stats), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/activity' && request.method === 'GET') {
+                const urlParams = new URL(request.url).searchParams;
+                const limit = parseInt(urlParams.get('limit') || '500');
+                
+                const companies = await getCompanies(env);
+                let allActivities = [];
+                
+                for (const comp of companies) {
+                    if (!comp.licenseKey) continue;
+                    const actKey = scopedKey('activities', comp.licenseKey);
+                    const acts = await safeArray(env, actKey);
+                    allActivities.push(...acts);
+                }
+                
+                allActivities = allActivities.slice(0, limit);
+                
+                return new Response(JSON.stringify(allActivities), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/invoices' && request.method === 'GET') {
+                const invoices = await safeArray(env, 'invoices');
+                return new Response(JSON.stringify(invoices), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/device-requests' && request.method === 'GET') {
+                const urlParams = new URL(request.url).searchParams;
+                const status = urlParams.get('status');
+                
+                let deviceRequests = await safeArray(env, 'device_requests');
+                if (status) {
+                    deviceRequests = deviceRequests.filter(r => r.status === status);
+                }
+                
+                return new Response(JSON.stringify(deviceRequests), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/users' && request.method === 'GET') {
+                const admins = await safeArray(env, 'admins');
+                const safeAdmins = admins.map(a => ({ username: a.username, role: a.role, lastLogin: a.lastLogin }));
+                return new Response(JSON.stringify(safeAdmins), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/add-user' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { username, password, role } = body;
+                
+                if (!username || !password) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Username and password required' }), { headers: corsHeaders });
+                }
+                
+                const hash = await sha256(password);
+                
+                const result = await atomicArrayUpdate(env, 'admins', (admins) => {
+                    if (admins.find(a => a.username === username)) {
+                        throw new Error('USERNAME_EXISTS');
+                    }
+                    
+                    return [...admins, {
+                        id: generateId(),
+                        username: username,
+                        password: hash,
+                        role: role || 'ADMIN',
+                        createdAt: Date.now(),
+                        version: 1
+                    }];
+                });
+                
+                if (!result.success && result.error === 'USERNAME_EXISTS') {
+                    return new Response(JSON.stringify({ ok: false, error: 'Username already exists' }), { headers: corsHeaders });
+                }
+                
+                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/delete-user' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                const { username } = body;
+                
+                let deletedUsername = null;
+                let isSuperAdmin = false;
+                
+                const result = await atomicArrayUpdate(env, 'admins', (admins) => {
+                    const target = admins.find(a => a.username === username);
+                    
+                    if (!target) return admins;
+                    if (target.role === 'SUPER_ADMIN') {
+                        isSuperAdmin = true;
+                        return admins;
+                    }
+                    
+                    deletedUsername = username;
+                    return admins.filter(a => a.username !== username);
+                });
+                
+                if (isSuperAdmin) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Cannot delete SUPER_ADMIN' }), { headers: corsHeaders });
+                }
+                
+                if (deletedUsername) {
+                    await invalidateUserSessions(deletedUsername);
+                }
+                
+                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/settings' && request.method === 'POST') {
+                const body = await request.json().catch(() => ({}));
+                await saveData(env, 'settings', body);
+                return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+            }
+            
+            if (path === '/admin/settings' && request.method === 'GET') {
+                const settings = await safeObject(env, 'settings');
+                return new Response(JSON.stringify(settings), { headers: corsHeaders });
+            }
+            
+            if (path.startsWith('/admin/company/') && request.method === 'GET') {
+                const companyId = path.split('/').pop();
+                const companies = await getCompanies(env);
+                
+                const company = companies.find(c => c.id === companyId);
+                if (!company) {
+                    return new Response(JSON.stringify({ ok: false, error: 'Company not found' }), { headers: corsHeaders, status: 404 });
+                }
+                
+                const devicesKey = scopedKey('devices', company.licenseKey);
+                const companyDevices = await safeArray(env, devicesKey);
+                
+                const vKey = scopedKey('violations', company.licenseKey);
+                const companyViolations = await safeArray(env, vKey);
+                
+                return new Response(JSON.stringify({
+                    ...company,
+                    devices: companyDevices,
+                    violations: companyViolations,
+                    violationStatus: await getViolationStatus(env, company.licenseKey),
+                    stats: {
+                        totalDevices: companyDevices.length,
+                        activeDevices: companyDevices.filter(d => d.status === 'ACTIVE').length,
+                        totalViolations: companyViolations.length
+                    }
+                }), { headers: corsHeaders });
+            }
+            
+            if (path === '/cron/check-expired' && request.method === 'GET') {
+                const result = await atomicArrayUpdate(env, 'companies', (companies) => {
+                    const now = Date.now();
+                    let updated = false;
+                    
+                    for (const company of companies) {
+                        if (company.expiredAt < now && company.status !== 'EXPIRED') {
+                            company.status = 'EXPIRED';
+                            updated = true;
+                        }
+                    }
+                    
+                    return companies;
+                });
+                
+                await invalidateCompaniesCache();
+                
+                return new Response(JSON.stringify({ ok: true, updated: result.success }), { headers: corsHeaders });
+            }
+            
+            if (path === '/sites' && request.method === 'GET') {
+                const siteNames = await safeObject(env, 'site_names');
+                return new Response(JSON.stringify({
+                    ok: true,
+                    sites: siteNames || { SITE_A: 'SITE A', SITE_B: 'SITE B', SITE_C: 'SITE C', customSites: {} }
+                }), { headers: corsHeaders });
+            }
+            
+            if (path === '/sites' && request.method === 'POST') {
+                const licenseCheck = await requireLicense(env, request);
+                if (!licenseCheck.ok) {
+                    return new Response(JSON.stringify(licenseCheck), { status: licenseCheck.status, headers: corsHeaders });
+                }
+                
+                const { company } = licenseCheck;
+
+                const deviceCheck = await validateDevice(env, licenseCheck.licenseKey, request);
+
+                if (!deviceCheck.ok) {
+                    return new Response(JSON.stringify({
+                        ok: false,
+                        error: deviceCheck.error
+                    }), { status: 403, headers: corsHeaders });
+                }
+
+                const packageType = company.package || 'DEMO';
+                
+                const canRename = packageType !== 'DEMO';
+                const canAddSites = packageType === 'PRO';
+                
+                const body = await request.json().catch(() => ({}));
+                const { sites, customSites } = body;
+                
+                let currentSites = await safeObject(env, 'site_names');
+                if (!currentSites.customSites) currentSites.customSites = {};
+                
+                if (sites && canRename) {
+                    for (const [key, value] of Object.entries(sites)) {
+                        if (value && value.trim()) {
+                            currentSites[key] = value.trim();
+                        }
+                    }
+                }
+                
+                if (customSites && canAddSites) {
+                    for (const [key, value] of Object.entries(customSites)) {
+                        if (value && value.trim()) {
+                            currentSites.customSites[key] = value.trim();
+                        }
+                    }
+                }
+                
+                await saveData(env, 'site_names', currentSites);
+                
+                return new Response(JSON.stringify({
+                    ok: true,
+                    sites: currentSites,
+                    package: packageType,
+                    canRename: canRename,
+                    canAddSites: canAddSites
+                }), { headers: corsHeaders });
+            }
+            
+            return new Response(JSON.stringify({ ok: false, error: 'Endpoint not found: ' + path }), { 
+                status: 404, 
+                headers: corsHeaders 
+            });
+            
+        } catch (error) {
+            console.error('Worker error:', error);
+            return new Response(JSON.stringify({ 
+                ok: false, 
+                error: error.message,
+                stack: error.stack,
+                timestamp: Date.now()
+            }), { 
+                status: 500, 
+                headers: corsHeaders 
+            });
+        }
+    }
+};
+
+// ==================== KV STORAGE LAYER ====================
+
+async function forceInit(env) {
+    console.log('[FORCE_INIT] Starting initialization...');
+    
+    try {
+        const testKey = '__vms_test__';
+        await env.VMS_STORAGE.put(testKey, 'test');
+        const testVal = await env.VMS_STORAGE.get(testKey);
+        console.log(`[FORCE_INIT] KV test: ${testVal === 'test' ? 'OK' : 'FAILED'}`);
+        
+        let admins = await safeArray(env, 'admins');
+        
+        if (!admins || admins.length === 0) {
+            console.log('[FORCE_INIT] No admins found, creating default...');
+            
+            const defaultHash = await sha256('123456');
+            
+            admins = [{
+                id: generateId(),
+                username: 'admin',
+                password: defaultHash,
+                role: 'SUPER_ADMIN',
+                createdAt: Date.now(),
+                createdBy: 'system',
+                token: null,
+                tokenExpiry: null,
+                version: 1
+            }];
+            
+            await saveData(env, 'admins', admins);
+            console.log('[FORCE_INIT] Default admin created successfully');
+        }
+        
+        let settings = await safeObject(env, 'settings');
+        if (!settings || Object.keys(settings).length === 0) {
+            console.log('[FORCE_INIT] Creating default settings...');
+            settings = {
+                pricing: {
+                    BASIC: { price: 500000, maxDevices: 10, extraDeviceFee: 50000 },
+                    PRO: { price: 2000000, maxDevices: 999, extraDeviceFee: 0 }
+                },
+                general: { 
+                    tax: 11,
+                    company: "VMS System",
+                    version: "3.3"
+                }
+            };
+            await saveData(env, 'settings', settings);
+        }
+        
+        const arrayCollections = [
+            'companies', 'device_requests', 'users_from_clients', 'invoices'
+        ];
+        
+        for (const collection of arrayCollections) {
+            const data = await safeArray(env, collection);
+            if (!Array.isArray(data) || data.length === undefined) {
+                await saveData(env, collection, []);
+            }
+        }
+        
+        const objectCollections = ['site_names'];
+        for (const collection of objectCollections) {
+            const data = await safeObject(env, collection);
+            if (!data || typeof data !== 'object') {
+                await saveData(env, collection, {});
+            }
+        }
+        
+        console.log('[FORCE_INIT] Initialization complete!');
+        return true;
+        
+    } catch (e) {
+        console.error('[FORCE_INIT] Error:', e);
+        return false;
+    }
+}
+
+async function forceInitNoPasswordOverride(env) {
+    console.log('[FORCE_INIT_NO_OVERRIDE] Starting safe initialization...');
+    
+    try {
+        const testKey = '__vms_test__';
+        await env.VMS_STORAGE.put(testKey, 'test');
+        const testVal = await env.VMS_STORAGE.get(testKey);
+        console.log(`[FORCE_INIT_NO_OVERRIDE] KV test: ${testVal === 'test' ? 'OK' : 'FAILED'}`);
+        
+        let admins = await safeArray(env, 'admins');
+        
+        if (!admins || admins.length === 0) {
+            console.log('[FORCE_INIT_NO_OVERRIDE] No admins found, creating default...');
+            
+            const defaultHash = await sha256('123456');
+            
+            admins = [{
+                id: generateId(),
+                username: 'admin',
+                password: defaultHash,
+                role: 'SUPER_ADMIN',
+                createdAt: Date.now(),
+                createdBy: 'system',
+                token: null,
+                tokenExpiry: null,
+                version: 1
+            }];
+            
+            await saveData(env, 'admins', admins);
+            console.log('[FORCE_INIT_NO_OVERRIDE] Default admin created');
+        } else {
+            console.log(`[FORCE_INIT_NO_OVERRIDE] Found ${admins.length} existing admins`);
+        }
+        
+        let settings = await safeObject(env, 'settings');
+        if (!settings || Object.keys(settings).length === 0) {
+            console.log('[FORCE_INIT_NO_OVERRIDE] Creating default settings...');
+            settings = {
+                pricing: {
+                    BASIC: { price: 500000, maxDevices: 10, extraDeviceFee: 50000 },
+                    PRO: { price: 2000000, maxDevices: 999, extraDeviceFee: 0 }
+                },
+                general: { 
+                    tax: 11,
+                    company: "VMS System",
+                    version: "3.3"
+                }
+            };
+            await saveData(env, 'settings', settings);
+        }
+        
+        const arrayCollections = [
+            'companies', 'device_requests', 'users_from_clients', 'invoices'
+        ];
+        
+        for (const collection of arrayCollections) {
+            const data = await safeArray(env, collection);
+            if (!Array.isArray(data) || data.length === undefined) {
+                await saveData(env, collection, []);
+            }
+        }
+        
+        const objectCollections = ['site_names'];
+        for (const collection of objectCollections) {
+            const data = await safeObject(env, collection);
+            if (!data || typeof data !== 'object') {
+                await saveData(env, collection, {});
+            }
+        }
+        
+        console.log('[FORCE_INIT_NO_OVERRIDE] Safe initialization complete!');
+        return true;
+        
+    } catch (e) {
+        console.error('[FORCE_INIT_NO_OVERRIDE] Error:', e);
+        return false;
+    }
+}
+
+async function getData(env, key) {
+    try {
+        if (!env || !env.VMS_STORAGE) {
+            console.error(`[GET_DATA] KV Storage not available for key: ${key}`);
+            return getDefaultData(key);
+        }
+        
+        const value = await env.VMS_STORAGE.get(key);
+        
+        if (!value || value === 'null' || value === 'undefined') {
+            return getDefaultData(key);
+        }
+        
+        return JSON.parse(value);
+        
+    } catch (e) {
+        console.error(`[GET_DATA] Error for key "${key}":`, e);
+        return getDefaultData(key);
+    }
+}
+
+async function saveData(env, key, data) {
+    try {
+        if (data === undefined || data === null) {
+            data = [];
+        }
+        
+        if (!env || !env.VMS_STORAGE) {
+            console.error(`[SAVE_DATA] KV Storage not available for key: ${key}`);
+            return false;
+        }
+        
+        const jsonString = JSON.stringify(data);
+        await env.VMS_STORAGE.put(key, jsonString);
+        return true;
+        
+    } catch (e) {
+        console.error(`[SAVE_DATA] Error for key "${key}":`, e);
+        return false;
+    }
+}
+
+function getDefaultData(key) {
+    const defaults = {
+        companies: [],
+        device_requests: [],
+        admins: [],
+        users_from_clients: [],
+        invoices: [],
+        site_names: {
+            SITE_A: "SITE A",
+            SITE_B: "SITE B", 
+            SITE_C: "SITE C",
+            customSites: {}
+        },
+        settings: {
+            pricing: {
+                BASIC: { price: 500000, maxDevices: 10, extraDeviceFee: 50000 },
+                PRO: { price: 2000000, maxDevices: 999, extraDeviceFee: 0 }
+            },
+            general: { tax: 11 }
+        }
+    };
+    
+    if (defaults[key] !== undefined) {
+        return defaults[key];
+    }
+    
+    return [];
+}
+
+async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+}

@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>VMS Client Portal | Device Management</title>
     <script src="api.js"></script>
+
+<script>
+function getDeviceId() {
+    let id = localStorage.getItem("deviceId");
+
+    if (!id) {
+        id = "DEV-" + crypto.randomUUID();
+        localStorage.setItem("deviceId", id);
+    }
+
+    return id;
+}
+</script>
+
     <style>
         * {
             margin: 0;
@@ -607,6 +621,18 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
+
+function getDeviceId() {
+    let id = localStorage.getItem("deviceId");
+
+    if (!id) {
+        id = "DEV-" + crypto.randomUUID();
+        localStorage.setItem("deviceId", id);
+    }
+
+    return id;
+}
+
 // ================= EXECUTION CONTROL CORE =================
 
 // Queue untuk memastikan semua action jalan berurutan
@@ -627,8 +653,17 @@ function enqueueAction(fn) {
 }
 
 // Guard (anti double trigger)
-async function guardedAction(fn) {
+async function guardedAction(fn, options = {}) {
     if (ACTION_LOCK) return;
+
+    const allowWhenInactive = options.allowWhenInactive || false;
+
+    // 🔥 FILTER UTAMA
+    if (window.currentDeviceStatus !== "ACTIVE" && !allowWhenInactive) {
+        showToast("Device belum aktif / belum di-approve", "error");
+        return;
+    }
+
     ACTION_LOCK = true;
 
     try {
@@ -675,6 +710,7 @@ let currentCompany = null;
 let devicesData = [];
 let refreshInterval = null;
 let CLIENT_LOCK = false;
+window.currentDeviceStatus = null;
 
 // ================= SAFE RELOAD ENGINE =================
 async function reloadClientSafe() {
@@ -765,6 +801,7 @@ async function validateLicense() {
         if (data) {
             currentLicense = licenseKey;
             currentCompany = data.company;
+	    window.currentDeviceStatus = data.deviceStatus || "UNKNOWN";
             localStorage.setItem("licenseKey", licenseKey);
             
             updateLicenseUI(data);
@@ -798,6 +835,15 @@ function updateLicenseUI(data) {
     
     if (isExpired) {
         showToast("⚠️ Your license has expired. Please contact admin to renew.", "error");
+    }
+
+    // 🔥 DEVICE STATUS WARNING
+    if (data.deviceStatus === "NOT_REGISTERED") {
+        showToast("Device belum terdaftar", "warning");
+    }
+
+    if (data.deviceStatus === "PENDING_APPROVAL") {
+        showToast("Device sedang menunggu approval admin", "warning");
     }
 }
 
@@ -953,6 +999,9 @@ async function submitApprovalRequest() {
         deviceName: deviceName,
         reason: reason || "New device registration"
     }, reloadClientSafe);
+guardedAction(() => submitApprovalRequest(), {
+    allowWhenInactive: true
+});
     
     showToast("Approval request sent to admin", "success");
     closeModal("approvalModal");

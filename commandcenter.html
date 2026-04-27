@@ -7,6 +7,20 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="api.js"></script>
+
+<script>
+function getDeviceId() {
+    let id = localStorage.getItem("deviceId");
+
+    if (!id) {
+        id = "DEV-" + crypto.randomUUID();
+        localStorage.setItem("deviceId", id);
+    }
+
+    return id;
+}
+</script>
+
     <style>
         * {
             margin: 0;

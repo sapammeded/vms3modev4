@@ -10,6 +10,20 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <script src="api.js"></script>
+
+<script>
+function getDeviceId() {
+    let id = localStorage.getItem("deviceId");
+
+    if (!id) {
+        id = "DEV-" + crypto.randomUUID();
+        localStorage.setItem("deviceId", id);
+    }
+
+    return id;
+}
+</script>
+
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #f0f2f5; font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #1a2c3e; }
@@ -274,6 +288,19 @@
 </div>
 
 <script>
+
+window.currentDeviceStatus = null;
+function getDeviceId() {
+    let id = localStorage.getItem("deviceId");
+
+    if (!id) {
+        id = "DEV-" + crypto.randomUUID();
+        localStorage.setItem("deviceId", id);
+    }
+
+    return id;
+}
+
 // ================= EXECUTION CONTROL CORE =================
 
 // Queue untuk memastikan semua action jalan berurutan
@@ -1006,7 +1033,38 @@ function startAutoRefresh() {
 
 async function init() {
     const savedLicense = localStorage.getItem("licenseKey");
+
+    if (savedLicense) {
+        try {
+            const res = await API.call("/validate-license", "POST", {
+                licenseKey: savedLicense
+            });
+
+            window.currentDeviceStatus = res.deviceStatus || "UNKNOWN";
+
+            if (window.currentDeviceStatus !== "ACTIVE") {
+                document.body.innerHTML = `
+                    <div style="text-align:center;margin-top:100px">
+                        <h2>🚫 Akses Diblokir</h2>
+                        <p>Device belum di-approve admin</p>
+                    </div>
+                `;
+                return;
+            }
+
+        } catch (e) {
+            document.body.innerHTML = `
+                <div style="text-align:center;margin-top:100px">
+                    <h2>⚠️ Server Error</h2>
+                    <p>Gagal validasi device</p>
+                </div>
+            `;
+            return;
+        }
+    }
+
     const savedPackage = localStorage.getItem("package");
+
     if (savedLicense && savedPackage) {
         currentLicense = savedLicense;
         currentPackage = savedPackage;
@@ -1022,10 +1080,6 @@ async function init() {
     loadSites();
     startAutoRefresh();
 }
-
-document.addEventListener('DOMContentLoaded', async () => {
-    await init();
-});
 </script>
 </body>
 </html>
