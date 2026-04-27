@@ -4,35 +4,42 @@ window.CLOUD_URL = "https://vms3modev4.sapammeded.workers.dev";
 
 // ===== SAFE REQUEST =====
 async function request(path, method = "GET", body = null) {
-    const token = localStorage.getItem("token");
-    const license = localStorage.getItem("licenseKey");
+    // 🔧 Ambil & bersihin token
+    const cleanToken = (localStorage.getItem("token") || "").trim();
+    const cleanLicense = (localStorage.getItem("licenseKey") || "").trim();
 
-    // 🔴 STOP kalau belum login
-    if (!token) {
+    // 🔴 STOP kalau gak ada token
+    if (!cleanToken) {
         console.warn("NO TOKEN → STOP REQUEST:", path);
         throw new Error("NO_TOKEN");
     }
 
     try {
+        // 🔥 Pakai Headers biar gak ke-split
+        const headers = new Headers();
+        headers.append("Content-Type", "application/json");
+        headers.append("x-token", cleanToken);
+        headers.append("x-license", cleanLicense);
+
+        console.log("DEBUG TOKEN:", cleanToken); // opsional debug
+
         const res = await fetch(`${window.CLOUD_URL}${path}`, {
             method,
-            headers: {
-                "Content-Type": "application/json",
-                "x-token": token,
-                "x-license": license || ""
-            },
+            headers: headers,
             body: body ? JSON.stringify(body) : null
         });
 
         let data;
+
         try {
             data = await res.json();
         } catch {
             throw new Error("INVALID_JSON");
         }
 
-        // 🔴 HTTP error
+        // 🔴 HTTP error (401, 500, dll)
         if (!res.ok) {
+            console.error("HTTP ERROR:", res.status, data);
             throw new Error(data?.error || `HTTP_${res.status}`);
         }
 
@@ -53,7 +60,6 @@ async function request(path, method = "GET", body = null) {
         throw err;
     }
 }
-
 // ===== PUBLIC API =====
 window.API = {
     call: request
